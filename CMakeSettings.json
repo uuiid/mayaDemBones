@@ -8,18 +8,13 @@
       "buildRoot": "${projectDir}\\out\\build\\${name}",
       "installRoot": "${projectDir}\\out\\install\\${name}",
       "cmakeCommandArgs": "",
-      "buildCommandArgs": "",
+      "buildCommandArgs": "/v:normal",
       "ctestCommandArgs": "",
       "variables": [
         {
           "name": "CMAKE_CXX_FLAGS",
           "value": "/DWIN32 /D_WINDOWS /W3 /GR /EHsc",
           "type": "STRING"
-        },
-        {
-          "name": "CMAKE_INSTALL_PREFIX",
-          "value": "C:/Users/teXiao/mayaDemBones/out/build/x64-Debug",
-          "type": "PATH"
         }
       ]
     }

@@ -10,6 +10,7 @@
 //+
 
 #include <math.h>
+#include <vector>
 
 #include <maya/MIOStream.h>
 #include <maya/MArgList.h>
@@ -39,10 +40,11 @@
 #include <maya/MDataHandle.h>
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnNumericAttribute.h>
+
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
 
-#include "DoodleConvertBoneNode.h"
+#include "DoodleConvertBone.h"
 
 
 // CONSTRUCTOR:
@@ -50,7 +52,6 @@ DoodleConvertBone::DoodleConvertBone()
 {
     this->__bindFrame__ = 0;
     this->IsGetFrame = false;
-    this->getFrame.clear();
 }
 
 // DESTRUCTOR:
@@ -62,15 +63,6 @@ DoodleConvertBone::~DoodleConvertBone()
 void* DoodleConvertBone::creator()
 {
     return new DoodleConvertBone;
-}
-
-
-
-
-MStatus DoodleConvertBone::initialize()
-{
-    MStatus state;
-    return state;
 }
 
 MSyntax DoodleConvertBone::createSyntax()
@@ -112,6 +104,7 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     // 获得设置值
     int startFrame;
     int endFrame;
+    int bindFrame;
     int nBones = 30;
     int nInitIters = 10;
     int nIters = 30;
@@ -151,6 +144,7 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     }
     //获得命令值
     if (argData.isFlagSet("nInitIters")) { argData.getFlagArgument("nInitIters", 0, nInitIters); }
+    if (argData.isFlagSet("bindFrame")) { argData.getFlagArgument("bindFrame", 0, bindFrame); }
     if (argData.isFlagSet("nIters")) { argData.getFlagArgument("nIters", 0, nIters); }
     if (argData.isFlagSet("nTransIters")) { argData.getFlagArgument("nTransIters", 0, nTransIters); }
     if (argData.isFlagSet("isBindUpdate")) { argData.getFlagArgument("isBindUpdate", 0, isBindUpdate); }
@@ -175,46 +169,92 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     this->DoodleConvert.nnz = nonZeroWeightsNum;
     this->DoodleConvert.weightsSmooth = weightsSmooth;
     this->DoodleConvert.weightsSmoothStep = weightsSmoothStep;
+    
+    //检测是否获得绑定帧
+    if (bindFrame != this->__bindFrame__) {
+        this->IsGetFrame = false;
+        this->__bindFrame__ = bindFrame;
+    }
 
     this->DoodleConvert.nS = 1;
     //设置总帧数
-    this->DoodleConvert.nF = endFrame - startFrame + 1;
+    this->DoodleConvert.nF = endFrame - startFrame;
 
     //先设置只有一个网格的转换
     MSelectionList sel;
     CHECK_MSTATUS(sel.add(inputMesh));
-
+    //获得 dag path
     MDagPath inputMeshPath;
     sel.getDagPath(0, inputMeshPath);
-    if (inputMeshPath.apiType() != MFnData::Type::kMesh)
+    // 将dag路径转换到网格中
+    CHECK_MSTATUS(inputMeshPath.extendToShape())
+    if (inputMeshPath.apiType() != MFn::Type::kMesh)
     { 
+
         MGlobal::displayError("不是网格物体"); 
         return MS::kFailure;
     }
-    // 将dag路径转换到网格中
-    CHECK_MSTATUS(inputMeshPath.extendToShape())
+    
     //获得网格体
     MFnMesh inputMesh_(inputMeshPath.node());
     //获得顶点
     MPointArray aimPoint;
+    inputMesh_.getPoints(aimPoint, MSpace::kWorld);
     //设置静止的顶点数
     this->DoodleConvert.nV = aimPoint.length();
     //设置一些全局值
     this->DoodleConvert.v.resize(3 * this->DoodleConvert.nF, this->DoodleConvert.nV);
     this->DoodleConvert.fTime.resize(this->DoodleConvert.nF);
     this->DoodleConvert.fStart.resize(this->DoodleConvert.nS + 1);
-    this->DoodleConvert.fStart(0) = startFrame;
-
+    this->DoodleConvert.fStart(0) = 0;
+    this->DoodleConvert.fv.resize(inputMesh_.numVertices());
     this->DoodleConvert.subjectID.resize(this->DoodleConvert.nF);
-    for (int i = startFrame; i < (endFrame + 1 ); i++)
+
+    // 循环获得网格和绑定帧
+    for (int i = 0; i < (this->DoodleConvert.nF); i++)
     {
-        MAnimControl::setCurrentTime(MTime(i, MTime::uiUnit()));
+        int currentFrame = i + startFrame;
+        // 设置当前帧
+        MAnimControl::setCurrentTime(MTime(currentFrame, MTime::uiUnit()));
         inputMesh_.getPoints(aimPoint, MSpace::kWorld);
         //循环当前帧中的网格数据
+        MGlobal::displayInfo("已获得" + MString() + (currentFrame) + "帧数据");
+
+        this->DoodleConvert.fTime(i) = i;
+
         for (int pn = 0; pn < this->DoodleConvert.nV; pn++)
         {
             this->DoodleConvert.v.col(pn).segment<3>(3 * i) << aimPoint[pn][0], aimPoint[pn][1], aimPoint[pn][2];
         }
+        //获得绑定帧
+        if (currentFrame == bindFrame)
+        {
+
+            MGlobal::displayInfo("已获得绑定帧");
+            this->IsGetFrame = true;
+            this->DoodleConvert.u.resize(this->DoodleConvert.nS * 3, this->DoodleConvert.nV);
+            // 设置多边形拓扑网格;
+            for (int pn = 0; pn < this->DoodleConvert.nV; pn++)
+            {
+                this->DoodleConvert.u.col(pn) << aimPoint[pn][0], aimPoint[pn][1], aimPoint[pn][2];
+            }
+            // 获得相对于polygon obj的顶点
+            //MIntArray pointlist_;
+            //MGlobal::displayInfo(MString() + inputMesh_.numVertices());
+            //for (int vex = 0; vex < inputMesh_.numVertices(); vex++)
+            //{
+            //    inputMesh_.getPolygonVertices(vex, pointlist_);
+            //    std::vector<int> pointlist;
+            //    for (int vexpol = 0; vexpol < pointlist_.length(); vexpol++)
+            //    {
+            //        cout << pointlist_[i] << endl;
+            //        pointlist.push_back(pointlist_[i]);
+            //    }
+            //    //this->DoodleConvert.fv[pn] = pointlist;
+            //}
+            
+        }
+
     }
 
     this->DoodleConvert.fStart(1) = this->DoodleConvert.fStart(0) + this->DoodleConvert.nF;
@@ -226,95 +266,59 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
         }
     }
 
-    //获得绑定帧
-    MDataHandle inputBindFrameHandle = dataBlock.inputValue(DoodleConvertBone::bindFrame, &status);
-    int bindframe = inputBindFrameHandle.asInt64();
-    //检测是否获得绑定帧
-    if (bindframe != this->__bindFrame__) {
-        this->IsGetFrame = false;
-        this->__bindFrame__ = bindframe;
-    }
-    if ((int)currentframe == bindframe)
-    {
-        MGlobal::displayInfo("已获得绑定帧");
-        this->IsGetFrame = true;
-        this->DoodleConvert.u.resize(this->DoodleConvert.nS * 3, this->DoodleConvert.nV);
-        for (int i = 0; i < this->DoodleConvert.nV; i++)
-        {
-            this->DoodleConvert.u.col(i) << aimPoint[i][0], aimPoint[i][1], aimPoint[i][2];
+    if (this->IsGetFrame) {
+        MGlobal::displayInfo("ok");
+        MComputation computtation;
+        computtation.beginComputation();
+
+        MGlobal::displayInfo("开始计算分布骨骼......请等待");
+        this->DoodleConvert.init();
+        if (computtation.isInterruptRequested()) {
+            return MS::kFailure;
         }
-    }
 
+        MGlobal::displayInfo("开始计算权重......请等待");
+        this->DoodleConvert.compute();
 
+        if (computtation.isInterruptRequested()) {
+            return MS::kFailure;
+        }
 
-    if (this->IsGetFrame && this->getFrame.size() == (int)(endframe_ - startframe_ + 1)) {
-        if (plug == subjectIndex)
+        // 获得计算输出
+        int s = 0;
+        Eigen::MatrixXd lr, lt, gb, lbr, lbt;
+        this->DoodleConvert.computeRTB(s, lr, lt, gb, lbr, lbt);
+        cout << s << endl;
+        cout << lr << endl;
+        cout << lt << endl;
+        cout << gb << endl;
+        cout << lbr << endl;
+        cout << lbt << endl;
+        // 设置输出
+        for (int i = 0; i < this->DoodleConvert.nB; i++)
         {
-            MComputation computtation;
-            computtation.beginComputation();
-
-            MGlobal::displayInfo("开始计算分布骨骼......请等待");
-            this->DoodleConvert.init();
-            if (computtation.isInterruptRequested()) {
-                return MS::kFailure;
-            }
-
-            MGlobal::displayInfo("开始计算权重......请等待");
-            this->DoodleConvert.compute();
-
-            if (computtation.isInterruptRequested()) {
-                return MS::kFailure;
-            }
-
-            //获得计算输出
-            int s = 0;
-            Eigen::MatrixXd lr, lt, gb, lbr, lbt;
-            this->DoodleConvert.computeRTB(s, lr, lt, gb, lbr, lbt);
-
-
-            //设置输出
-            MDataHandle outgetFrameHandle = dataBlock.outputValue(DoodleConvertBone::subjectIndex, &status);
-            outgetFrameHandle.set(s);
-            MArrayDataHandle outArrayAimRotationHandle = dataBlock.outputArrayValue(DoodleConvertBone::aimRotation, &status);
-            MArrayDataBuilder outArrayAimRotationBuilder = outArrayAimRotationHandle.builder();
-            for (int i = 0; i < this->DoodleConvert.nB; i++)
+            for (int it_ = 0; it_ < (int)(this->DoodleConvert.nF); it_++)
             {
-                MArrayDataHandle aimpPintRotation = outArrayAimRotationBuilder.addElementArray(i);
-                for (int it_ = 0; it_ < (int)(endframe_ - startframe_ + 1); it_++)
-                {
-                    MVector pointRotation = aimpPintRotation.builder().addElement(it_).asVector();
-                    pointRotation.x = lr.col(i).segment<3>(3 * it_)[0];
-                    pointRotation.y = lr.col(i).segment<3>(3 * it_)[1];
-                    pointRotation.z = lr.col(i).segment<3>(3 * it_)[2];
-                }
+                
             }
-            //outAimRotationHandle.set(MMatrix(lr));
-
-            computtation.endComputation();
-            CHECK_MSTATUS(dataBlock.setClean(plug))
         }
-        else
-        {
-            return MS::kUnknownParameter;
-        }
-
+        computtation.endComputation();
     }
     else
     {
         if (this->IsGetFrame)MGlobal::displayError("没有获得绑定帧, 请播放动画, 将收集动画和绑定帧");
-        if (this->getFrame.size() == (int)(endframe_ - startframe_ + 1))MGlobal::displayError("没有获得动画序列, 请播放动画, 将收集动画和绑定帧");
-        return MS::kUnknownParameter;
+        return MS::kFailure;
     }
-    return MS::kUnknownParameter;
+    return MS::kSuccess;
 }
 
 
 MStatus initializePlugin(MObject obj)
 {
     MStatus   status;
-    MFnPlugin plugin(obj, PLUGIN_COMPANY, "8.5", "Any");
+    MFnPlugin plugin(obj, PLUGIN_COMPANY, "0.1", "Any");
 
-    status = plugin.registerCommand("DoodleConvertBone", DoodleConvertBone::creator, DoodleConvertBone::createSyntax);
+    status = plugin.registerCommand("doodleConvertBone", DoodleConvertBone::creator, DoodleConvertBone::createSyntax);
     if (!status) {
         status.perror("registerCommand");
         return status;
@@ -328,7 +332,7 @@ MStatus uninitializePlugin(MObject obj)
     MStatus   status;
     MFnPlugin plugin(obj);
 
-    status = plugin.deregisterCommand("DoodleConvertBone");
+    status = plugin.deregisterCommand("doodleConvertBone");
     if (!status) {
         status.perror("deregisterCommand");
         return status;

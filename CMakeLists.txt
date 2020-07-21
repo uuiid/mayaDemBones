@@ -29,14 +29,14 @@ find_path(EIGEN_INCLUDE_DIR
 )
 include_directories("${EIGEN_INCLUDE_DIR}")
 # specify project name
-set(PROJECT_NAME DoodleConvertBoneNode)
+set(PROJECT_NAME DoodleConvertBone)
 
 
 
 # set SOURCE_FILES
 set(SOURCE_FILES
-   DoodleConvertBoneNode.cpp
-   DoodleConvertBoneNode.h
+   DoodleConvertBone.cpp
+   DoodleConvertBone.h
 )
 
 # set linking libraries
@@ -53,5 +53,5 @@ set(LIBRARIES
 # Build plugin
 build_plugin()
 
-install(TARGETS DoodleConvertBoneNode
+install(TARGETS DoodleConvertBone
     DESTINATION "C:/Users/teXiao/Documents/maya/plug-ins")

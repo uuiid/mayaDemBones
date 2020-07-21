@@ -33,8 +33,6 @@ public:
 	~DoodleConvertBone() override;
 	static void* creator();
 
-	static MStatus initialize();
-
 	MStatus doIt(const MArgList& arge) override;
 
 	static MSyntax createSyntax();
@@ -55,6 +53,5 @@ public:
 private:
 	DoodleDemBones DoodleConvert;
 	int __bindFrame__;
-	std::set<double> getFrame;
 	bool IsGetFrame;
 };
