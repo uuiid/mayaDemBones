@@ -32,6 +32,13 @@ include_directories("${EIGEN_INCLUDE_DIR}")
 set(PROJECT_NAME DoodleConvertBone)
 
 
+if(MSVC)
+
+endif()
+#string(REGEX REPLACE "/ZI" ""
+#         CMAKE_CXX_FLAGS_RELEASE
+#         "${CMAKE_CXX_FLAGS_RELEASE}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /ZI")
 
 # set SOURCE_FILES
 set(SOURCE_FILES

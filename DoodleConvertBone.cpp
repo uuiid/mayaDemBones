@@ -40,13 +40,15 @@
 #include <maya/MDataHandle.h>
 #include <maya/MFnTypedAttribute.h>
 #include <maya/MFnNumericAttribute.h>
+#include <maya/MItMeshPolygon.h>
+
 
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
 
 #include "DoodleConvertBone.h"
 
-
+#define DIVISION(a) if(a) cout << "====================================================================================================" <<endl;
 // CONSTRUCTOR:
 DoodleConvertBone::DoodleConvertBone()
 {
@@ -197,11 +199,18 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     
     //获得网格体
     MFnMesh inputMesh_(inputMeshPath.node());
+    //获得dag 依赖节点
+    MFnDependencyNode inputmeshDepPathNode(inputMeshPath.node());
+    MPlug meshPlugs = inputmeshDepPathNode.findPlug(MString("outMesh"), &status);
+    MObject test;
+    
+    
+    //MFnMesh test( );
     //获得顶点
     MPointArray aimPoint;
     inputMesh_.getPoints(aimPoint, MSpace::kWorld);
     //设置静止的顶点数
-    this->DoodleConvert.nV = aimPoint.length();
+    this->DoodleConvert.nV = inputMesh_.numVertices();
     //设置一些全局值
     this->DoodleConvert.v.resize(3 * this->DoodleConvert.nF, this->DoodleConvert.nV);
     this->DoodleConvert.fTime.resize(this->DoodleConvert.nF);
@@ -209,6 +218,7 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     this->DoodleConvert.fStart(0) = 0;
     this->DoodleConvert.fv.resize(inputMesh_.numVertices());
     this->DoodleConvert.subjectID.resize(this->DoodleConvert.nF);
+    //this->DoodleConvert.w = (Eigen::MatrixXd(0, 0)).sparseView(1, 1e-20);
 
     // 循环获得网格和绑定帧
     for (int i = 0; i < (this->DoodleConvert.nF); i++)
@@ -216,6 +226,8 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
         int currentFrame = i + startFrame;
         // 设置当前帧
         MAnimControl::setCurrentTime(MTime(currentFrame, MTime::uiUnit()));
+        // 获得当前时间的网格体
+        CHECK_MSTATUS_AND_RETURN_IT(meshPlugs.getValue(test, MDGContext(MTime(currentFrame, MTime::uiUnit( )))));
         inputMesh_.getPoints(aimPoint, MSpace::kWorld);
         //循环当前帧中的网格数据
         MGlobal::displayInfo("已获得" + MString() + (currentFrame) + "帧数据");
@@ -234,25 +246,33 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
             this->IsGetFrame = true;
             this->DoodleConvert.u.resize(this->DoodleConvert.nS * 3, this->DoodleConvert.nV);
             // 设置多边形拓扑网格;
+            DIVISION(debug)
+            if (debug) cout << aimPoint << endl;
+            DIVISION(debug)
             for (int pn = 0; pn < this->DoodleConvert.nV; pn++)
             {
-                this->DoodleConvert.u.col(pn) << aimPoint[pn][0], aimPoint[pn][1], aimPoint[pn][2];
+                this->DoodleConvert.u.col(pn).segment(0,3) << aimPoint[pn][0], aimPoint[pn][1], aimPoint[pn][2];
+                if (debug) cout << aimPoint[pn][0] << endl;
+                if (debug) cout << aimPoint[pn][1] << endl;
+                if (debug) cout << aimPoint[pn][2] << endl;
             }
+            DIVISION(debug)
             // 获得相对于polygon obj的顶点
-            //MIntArray pointlist_;
-            //MGlobal::displayInfo(MString() + inputMesh_.numVertices());
-            //for (int vex = 0; vex < inputMesh_.numVertices(); vex++)
-            //{
-            //    inputMesh_.getPolygonVertices(vex, pointlist_);
-            //    std::vector<int> pointlist;
-            //    for (int vexpol = 0; vexpol < pointlist_.length(); vexpol++)
-            //    {
-            //        cout << pointlist_[i] << endl;
-            //        pointlist.push_back(pointlist_[i]);
-            //    }
-            //    //this->DoodleConvert.fv[pn] = pointlist;
-            //}
-            
+            if (debug) cout << this->DoodleConvert.u << endl;
+            DIVISION(debug)
+            MItMeshPolygon vexIter(inputMeshPath);
+            for (vexIter.reset(); !vexIter.isDone(); vexIter.next()) {
+                int index = vexIter.index();
+                MIntArray vexIndexArray;
+                vexIter.getVertices(vexIndexArray);
+                
+                std::vector<int> mindex;
+                for (unsigned int vexindex = 0; vexindex < vexIndexArray.length(); vexindex++)
+                {
+                    mindex.push_back(vexIndexArray[vexindex]);
+                }
+                this->DoodleConvert.fv[index] = mindex;
+            }
         }
 
     }
@@ -278,7 +298,17 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
         }
 
         MGlobal::displayInfo("开始计算权重......请等待");
-        this->DoodleConvert.compute();
+        //this->DoodleConvert.compute();
+        try
+        {
+            //
+        }
+        catch (...)//const std::exception&
+        {
+            MGlobal::displayError("计算失败");
+            return MS::kFailure;
+        }
+        
 
         if (computtation.isInterruptRequested()) {
             return MS::kFailure;
@@ -288,12 +318,12 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
         int s = 0;
         Eigen::MatrixXd lr, lt, gb, lbr, lbt;
         this->DoodleConvert.computeRTB(s, lr, lt, gb, lbr, lbt);
-        cout << s << endl;
-        cout << lr << endl;
-        cout << lt << endl;
-        cout << gb << endl;
-        cout << lbr << endl;
-        cout << lbt << endl;
+        //cout << s << endl;
+        //cout << lr << endl;
+        //cout << lt << endl;
+        //cout << gb << endl;
+        //cout << lbr << endl;
+        //cout << lbt << endl;
         // 设置输出
         for (int i = 0; i < this->DoodleConvert.nB; i++)
         {
