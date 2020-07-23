@@ -16,7 +16,8 @@
           "value": "/DWIN32 /D_WINDOWS /W3 /GR /EHsc",
           "type": "STRING"
         }
-      ]
+      ],
+      "cmakeExecutable": "C:/Program Files/CMake/bin/cmake.exe"
     }
   ]
 }
