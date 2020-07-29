@@ -17,7 +17,7 @@
 #include <maya/MGlobal.h>
 #include <maya/MTime.h>
 #include <maya/MSyntax.h>
-
+#include <maya/MDagModifier.h>
 
 class DoodleDemBones : public Dem::DemBonesExt<double, float> {
 public:
@@ -36,20 +36,25 @@ public:
 
 	MStatus doIt(const MArgList& arge) override;
 
+	const bool isHistoryOn( );
+
+	const bool isUndoable( ) ;
+
 	void SetSubObjectIndex( );
 
-	void initConvertAttr(Autodesk::Maya::OpenMaya20200000::MFnMesh& inputMesh_);
+	void initConvertAttr(MFnMesh& inputMesh_);
 
-	void GetFrameMeshData(int i, Autodesk::Maya::OpenMaya20200000::MObject& MobjMesh);
+	void GetFrameMeshData(int i, MObject& MobjMesh);
 
-	void GetBindFrame(Autodesk::Maya::OpenMaya20200000::MObject& MobjMesh);
+	void GetBindFrame(MObject& MobjMesh);
 
 	void GetMeshData(MDagPath& inputMeshPath);
 
-	void createJoins(const std::vector<MString>& name);
+	void createJoins();
 
 	void addCurve();
 
+	void addSkinCluster( );
 
 
 	MStatus AnalysisCommand(MArgList arge, MStatus Doolstatus );
@@ -58,15 +63,17 @@ public:
 	static MSyntax createSyntax();
 	// 核心转化类实例
 	DoodleDemBones DoodleConvert;
-	
-	std::vector<MFnIkJoint> doolJoint;
+	std::vector<MObject> doolJoint;
 	
 	// 比较重要的值
 	int startFrame;
 	int endFrame;
 	MString inputMesh;
+	MObject bindObj;
+	MString objName;
 	int nBones = 30;
 	MDGModifier dgModidier;
+	MDagModifier dagModifier;
 
 	// 获得设置值
 	int nInitIters = 10;

@@ -43,9 +43,10 @@
 #include <maya/MItMeshPolygon.h>
 #include <maya/MItMeshVertex.h>
 #include <maya/MDGContextGuard.h>
-
-#include <maya/MFnSkinCluster.h>
 #include <maya/MFnIkJoint.h>
+#include <maya/MFnSkinCluster.h>
+#include <maya/MFnMeshData.h>
+#include <maya/MDagPathArray.h>
 
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
@@ -54,7 +55,7 @@
 
 #define DIVISION(a) if(a) cout << "====================================================================================================" <<endl;
 // CONSTRUCTOR:
-DoodleConvertBone::DoodleConvertBone()
+DoodleConvertBone::DoodleConvertBone( )
 {
     this->__bindFrame__ = 0;
     this->IsGetFrame = false;
@@ -63,6 +64,7 @@ DoodleConvertBone::DoodleConvertBone()
     this->endFrame = 5;
     this->inputMesh = "";
     this->nBones = 30;
+    this->objName = "doodle";
 
     this->nInitIters = 10;
     this->nIters = 30;
@@ -76,16 +78,16 @@ DoodleConvertBone::DoodleConvertBone()
     this->weightsSmoothStep = 0.5;
 
     this->subjectIndex = 0;
-    
+
 }
 
 // DESTRUCTOR:
-DoodleConvertBone::~DoodleConvertBone()
+DoodleConvertBone::~DoodleConvertBone( )
 {
 }
 
 // FOR CREATING AN INSTANCE OF THIS COMMAND:
-void* DoodleConvertBone::creator()
+void* DoodleConvertBone::creator( )
 {
     return new DoodleConvertBone;
 }
@@ -93,6 +95,7 @@ void* DoodleConvertBone::creator()
 MStatus DoodleConvertBone::AnalysisCommand(MArgList arge, MStatus Doolstatus)
 {
     int bindFrame;
+    //帮助文档暂时不写
     MArgDatabase argData(syntax( ), arge, &Doolstatus);
     if (argData.isFlagSet("help")) {
         MGlobal::displayInfo("这里什么都没有");
@@ -161,6 +164,7 @@ MStatus DoodleConvertBone::AnalysisCommand(MArgList arge, MStatus Doolstatus)
     this->DoodleConvert.nS = 1;
     //设置总帧数
     this->DoodleConvert.nF = this->endFrame - this->startFrame;
+    return Doolstatus;
 }
 
 MStatus DoodleConvertBone::InitAndCimpute( )
@@ -177,9 +181,10 @@ MStatus DoodleConvertBone::InitAndCimpute( )
     MGlobal::displayInfo("开始计算权重......请等待");
     this->DoodleConvert.compute( );
     computtation.endComputation( );
+    return MStatus::kSuccess;
 }
 
-MSyntax DoodleConvertBone::createSyntax()
+MSyntax DoodleConvertBone::createSyntax( )
 {
     MSyntax syntax;
     syntax.addFlag("-sf", "-startFrame", MSyntax::kDouble);
@@ -207,10 +212,9 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     bool debug = true;
     bool treeBased = true;
     MStatus Doolstatus = MStatus::kSuccess;
-    //帮助文档暂时不写
     
+    // 解析一些命令参数
     CHECK_MSTATUS_AND_RETURN_IT(this->AnalysisCommand(arge, Doolstatus));
-
     //先设置只有一个网格的转换
     MSelectionList sel;
     CHECK_MSTATUS(sel.add(this->inputMesh));
@@ -218,15 +222,17 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     MDagPath inputMeshPath;
     sel.getDagPath(0, inputMeshPath);
     // 将dag路径转换到网格中
-    CHECK_MSTATUS(inputMeshPath.extendToShape())
-    if (inputMeshPath.apiType() != MFn::Type::kMesh)
-    { 
-        MGlobal::displayError("不是网格物体"); 
-        return MS::kFailure;
-    }
-    
+    CHECK_MSTATUS(inputMeshPath.extendToShape( ))
+        if (inputMeshPath.apiType( ) != MFn::Type::kMesh)
+        {
+            MGlobal::displayError("不是网格物体");
+            return MS::kFailure;
+        }
+
     //获得网格体
-    MFnMesh inputMesh_(inputMeshPath.node());
+    MFnMesh inputMesh_(inputMeshPath.node( ));
+    this->objName = inputMesh_.name( );
+    // 初始化一些网格数据的数组
     this->initConvertAttr(inputMesh_);
     // 获得序列网格数据
     this->GetMeshData(inputMeshPath);
@@ -234,32 +240,20 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
     this->SetSubObjectIndex( );
 
     if (this->IsGetFrame) {
+
         CHECK_MSTATUS_AND_RETURN_IT(this->InitAndCimpute( ));
         // 获得计算输出
-        this->DoodleConvert.computeRTB(subjectIndex, 
+        this->DoodleConvert.computeRTB(subjectIndex,
                                        localRotation,
                                        localTranslation,
                                        globalBindMatrices,
                                        localBindPoseRotation,
                                        localBindPoseTranslation);
-        // 设置输出
+        // 设置各种节点
+        this->createJoins( );
+        this->addCurve( );
+        this->addSkinCluster( );
 
-        MObject skinClusterObj = dgModidier.createNode("skinCluster", &Doolstatus);
-        dgModidier.renameNode(skinClusterObj, inputMesh_.name() + "dConvert");
-        dgModidier.doIt( );
-        MFnSkinCluster skinCluster(skinClusterObj);
-        //this->createJoins()
-        //skinCluster;
-
-
-        for (int i = 0; i < this->DoodleConvert.nB; i++)
-        {
-            for (int it_ = 0; it_ < (int)(this->DoodleConvert.nF); it_++)
-            {
-                
-            }
-        }
-        
     }
     else
     {
@@ -267,6 +261,16 @@ MStatus DoodleConvertBone::doIt(const MArgList& arge)
         return MS::kFailure;
     }
     return MS::kSuccess;
+}
+
+const bool DoodleConvertBone::isHistoryOn( )
+{
+    return false;
+}
+
+const bool DoodleConvertBone::isUndoable( )
+{
+    return false;
 }
 
 void DoodleConvertBone::SetSubObjectIndex( )
@@ -281,7 +285,7 @@ void DoodleConvertBone::SetSubObjectIndex( )
     }
 }
 
-void DoodleConvertBone::initConvertAttr(Autodesk::Maya::OpenMaya20200000::MFnMesh& inputMesh_)
+void DoodleConvertBone::initConvertAttr(MFnMesh& inputMesh_)
 {
     //设置静止的顶点数
     this->DoodleConvert.nV = inputMesh_.numVertices( );
@@ -294,7 +298,7 @@ void DoodleConvertBone::initConvertAttr(Autodesk::Maya::OpenMaya20200000::MFnMes
     this->DoodleConvert.subjectID.resize(this->DoodleConvert.nF);
 }
 
-void DoodleConvertBone::GetFrameMeshData(int frame, Autodesk::Maya::OpenMaya20200000::MObject& MobjMesh)
+void DoodleConvertBone::GetFrameMeshData(int frame, MObject& MobjMesh)
 {
     /// <summary>
     /// 获得传入帧的网格顶点数据
@@ -312,12 +316,14 @@ void DoodleConvertBone::GetFrameMeshData(int frame, Autodesk::Maya::OpenMaya2020
     }
 }
 
-void DoodleConvertBone::GetBindFrame(Autodesk::Maya::OpenMaya20200000::MObject& MobjMesh)
+void DoodleConvertBone::GetBindFrame(MObject& MobjMesh)
 {
     /// <summary>
     /// 获得网格中绑定帧的数据
     /// </summary>
     /// <param name="MobjMesh"></param>
+
+
     MItMeshVertex vexpointBindFrame(MobjMesh);
     MGlobal::displayInfo("已获得绑定帧");
     this->IsGetFrame = true;
@@ -343,6 +349,16 @@ void DoodleConvertBone::GetBindFrame(Autodesk::Maya::OpenMaya20200000::MObject& 
         }
         this->DoodleConvert.fv[index] = mindex;
     }
+    //if (!MobjMesh.hasFn(MFn::kMesh))
+    //{
+    //    MGlobal::displayInfo("这个不可以复制");
+    //}
+    //MFnMesh fnBindMesh;
+    //MFnMeshData dataBindMesh(MobjMesh);
+    //fnBindMesh.copy(dataBindMesh.object(), MObject::kNullObj);
+    //this->bindObj = fnBindMesh.object( );
+    //this->dgModidier.renameNode(this->bindObj, this->objName + "doodleConvert");
+    //this->dgModidier.doIt( );
 }
 
 void DoodleConvertBone::GetMeshData(MDagPath& inputMeshPath)
@@ -377,55 +393,241 @@ void DoodleConvertBone::GetMeshData(MDagPath& inputMeshPath)
     }
 }
 
-void DoodleConvertBone::createJoins(const std::vector<MString>& name)
+void DoodleConvertBone::createJoins()
 {
     /// <summary>
     /// 创建骨骼
     /// </summary>
     /// <param name="name"></param>
-    for (std::vector<MString>::const_iterator iter = name.begin( ); iter != name.end(); ++iter)
+    MStatus statu;
+    this->doolJoint.clear( );
+    int index = 0;
+    for (int i = 0; i < this->DoodleConvert.nB; i++)
     {
-        MObject jointObject = this->dgModidier.createNode("joint");
-        this->dgModidier.renameNode(jointObject, *iter);
-        this->dgModidier.doIt( );
-        MFnIkJoint joint(jointObject);
+        MString name;
+        name.format("^1s_^2s_^3s", this->objName, MString("joint"), MString( ) + i);
+        MFnIkJoint joint;
+        MObject jointObject = joint.create( );
+        this->dagModifier.renameNode(jointObject, name);
+        this->dagModifier.doIt( );
         joint.setRotationOrder(MTransformationMatrix::RotationOrder::kXYZ, true);
-        doolJoint.push_back(jointObject);
+        joint.setTranslation(MVector(this->localBindPoseTranslation.col(index).segment<3>(0)[0],
+                             this->localBindPoseTranslation.col(index).segment<3>(0)[1],
+                             this->localBindPoseTranslation.col(index).segment<3>(0)[2]), MSpace::kWorld);
+        double ro[3] = { this->localBindPoseRotation.col(index).segment<3>(0)[0],
+                          this->localBindPoseRotation.col(index).segment<3>(0)[1],
+                          this->localBindPoseRotation.col(index).segment<3>(0)[2] };
+        joint.setRotation(ro, MTransformationMatrix::RotationOrder::kXYZ);
+        doolJoint.push_back(joint.object());
+        index++;
     }
-    
 }
 
-void DoodleConvertBone::addCurve()
+void DoodleConvertBone::addCurve( )
 {
+    /// <summary>
+    /// 创建曲线
+    /// </summary>
     MFnAnimCurve aim;
-    for (std::vector<MFnIkJoint>::const_iterator i = this->doolJoint.begin();
-         i != this->doolJoint.end() ; ++i)
+    int index = 0;
+    for (std::vector<MObject>::const_iterator i = this->doolJoint.begin( );
+         i != this->doolJoint.end( ); ++i)
     {
-        MPlug plugtx = i->findPlug("tx");
-        MPlug plugty = i->findPlug("ty");
-        MPlug plugtz = i->findPlug("tz");
-        MPlug plugrx = i->findPlug("rx");
-        MPlug plugry = i->findPlug("ry");
-        MPlug plugrz = i->findPlug("rz");
+        MFnIkJoint fnjoint(*i);
+        MPlug plugtx = fnjoint.findPlug("tx");
+        MPlug plugty = fnjoint.findPlug("ty");
+        MPlug plugtz = fnjoint.findPlug("tz");
+        MPlug plugrx = fnjoint.findPlug("rx");
+        MPlug plugry = fnjoint.findPlug("ry");
+        MPlug plugrz = fnjoint.findPlug("rz");
+
+        MTimeArray timeArray;
+        MDoubleArray doubleArrayTX;
+        MDoubleArray doubleArrayTY;
+        MDoubleArray doubleArrayTZ;
+        MDoubleArray doubleArrayRX;
+        MDoubleArray doubleArrayRY;
+        MDoubleArray doubleArrayRZ;
+        for (int Dtime = 0; Dtime < this->DoodleConvert.fTime.size( ); Dtime++)
+        {
+            int frame = this->DoodleConvert.fTime(Dtime) + this->startFrame;
+            timeArray.append(MTime(frame, MTime::uiUnit( )));
+            Eigen::Vector3d lt = this->localTranslation.col(index).segment<3>(3 * Dtime);
+            //设置绑定平移曲线
+            doubleArrayTX.append(lt.x());
+            doubleArrayTY.append(lt.y());
+            doubleArrayTZ.append(lt.z());
+            //设置绑定旋转曲线
+            doubleArrayRX.append(this->localRotation.col(index).segment<3>(3 * Dtime).x());
+            doubleArrayRY.append(this->localRotation.col(index).segment<3>(3 * Dtime).y());
+            doubleArrayRZ.append(this->localRotation.col(index).segment<3>(3 * Dtime).z());
+        }
+
         //平移曲线
         MObject aimTX = aim.create(plugtx, MFnAnimCurve::AnimCurveType::kAnimCurveTL, &this->dgModidier);
-        MTimeArray timeArray;
-        this->DoodleConvert.fTime.size( );
-
-        //aim.addKeys()
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayTX);
         MObject aimTY = aim.create(plugty, MFnAnimCurve::AnimCurveType::kAnimCurveTL, &this->dgModidier);
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayTY);
         MObject aimTZ = aim.create(plugtz, MFnAnimCurve::AnimCurveType::kAnimCurveTL, &this->dgModidier);
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayTZ);
         //旋转曲线
         MObject aimRX = aim.create(plugrx, MFnAnimCurve::AnimCurveType::kAnimCurveTA, &this->dgModidier);
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayRX);
         MObject aimRY = aim.create(plugry, MFnAnimCurve::AnimCurveType::kAnimCurveTA, &this->dgModidier);
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayRY);
         MObject aimRZ = aim.create(plugrz, MFnAnimCurve::AnimCurveType::kAnimCurveTA, &this->dgModidier);
+        aim.addKeys(&MTimeArray(timeArray), &doubleArrayRZ);
+        
         //重命名曲线
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acTX");
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acTY");
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acTZ");
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acRX");
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acRY");
-        this->dgModidier.renameNode(aimTX, i->name( ) + "acRZ");
+        MString acTX;
+        MString acTY;
+        MString acTZ;
+        MString acRX;
+        MString acRY;
+        MString acRZ;
+        acTX.format("^1s_^2s_^3s", this->objName, "aimcurveTX", MString( ) + index);
+        acTY.format("^1s_^2s_^3s", this->objName, "aimcurveTY", MString( ) + index);
+        acTZ.format("^1s_^2s_^3s", this->objName, "aimcurveTZ", MString( ) + index);
+        acRX.format("^1s_^2s_^3s", this->objName, "aimcurveRX", MString( ) + index);
+        acRY.format("^1s_^2s_^3s", this->objName, "aimcurveRY", MString( ) + index);
+        acRZ.format("^1s_^2s_^3s", this->objName, "aimcurveRZ", MString( ) + index);
+        this->dgModidier.renameNode(aimTX, acTX);
+        this->dgModidier.renameNode(aimTY, acTY);
+        this->dgModidier.renameNode(aimTZ, acTZ);
+        this->dgModidier.renameNode(aimRX, acRX);
+        this->dgModidier.renameNode(aimRY, acRY);
+        this->dgModidier.renameNode(aimRZ, acRZ);
+        // 自增索引
+        index++;
+    }
+}
+
+void DoodleConvertBone::addSkinCluster( )
+{   
+    /// <summary>
+    /// 添加皮肤簇
+    /// </summary>
+    MStatus status;
+    // 复制源网格
+    MGlobal::viewFrame(MTime(this->__bindFrame__, MTime::uiUnit( )));
+    MSelectionList sel;
+    CHECK_MSTATUS(sel.add(this->inputMesh));
+    //获得 dag path
+    MDagPath inputMeshPath;
+    sel.getDagPath(0, inputMeshPath);
+    MFnTransform inputTrans(inputMeshPath);
+    this->bindObj = inputTrans.duplicate(false,false , &status);
+    CHECK_MSTATUS(status);
+    this->dgModidier.renameNode(this->bindObj, this->objName + "bindobj");
+    MFnMesh fnbindObjMesh(MFnTransform(this->bindObj).child(0));
+    MObject bindObjOrg = fnbindObjMesh.copy(MFnTransform(this->bindObj).child(0),this->bindObj);
+    CHECK_MSTATUS(status);
+    this->dgModidier.renameNode(bindObjOrg, this->objName + "bindobjOrg");
+    this->dgModidier.doIt( );
+    MFnMesh fnbindObjOrgMesh(bindObjOrg);
+    CHECK_MSTATUS(fnbindObjOrgMesh.setIntermediateObject(true));
+
+    //MString comm;
+    //comm.format("^1s ^2s ^3s", MString("skinCluster -name"), this->objName + "skincluster", MString("-toSelectedBones"));
+    //for (std::vector<MObject>::const_iterator joint = this->doolJoint.begin( ); joint != doolJoint.end( ); ++joint)
+    //{
+    //    MString jointstr;
+    //    MFnIkJoint fnJoint(*joint);
+    //    jointstr.format(" ^1s", fnJoint.fullPathName( ));
+    //    comm += jointstr;
+    //}
+    //MString meshstr;
+    //meshstr.format(" ^1s", MFnTransform(this->bindObj).fullPathName( ));
+    //comm += meshstr;
+    //MString skinCluster;
+    // 执行命令
+    //this->dgModidier.commandToExecute()
+    //CHECK_MSTATUS(MGlobal::executeCommandOnIdle(comm, true));
+    //MSelectionList selSkinCluster;
+    //CHECK_MSTATUS(selSkinCluster.add(this->objName + "skincluster"));
+    //MDagPath dagSkinCluster;
+    //selSkinCluster.getDagPath(0, dagSkinCluster);
+    //MFnSkinCluster fnSkinCluster(dagSkinCluster.node());
+    
+    //MPlug weightList = fnSkinCluster.findPlug("weightList");
+    //for (int i = 0; i < this->DoodleConvert.nV; i++)
+    //{
+    //    MPlug weightArray = weightList.child(i).child(0);
+    //    int index = 0;
+    //    for (std::vector<MObject>::const_iterator joint = this->doolJoint.begin( ); joint != doolJoint.end( ); ++joint)
+    //    {
+    //        weightArray.elementByLogicalIndex(index).setValue(this->DoodleConvert.w.coeff(index, i));
+    //        cout << "骨骼索引" << index << " 点数索引 " << i << " --" << this->DoodleConvert.w.coeff(index, i) << endl;
+    //        index++;
+    //    }
+    //    
+    //}
+    //添加皮肤簇
+    MFnSkinCluster skinCluster;
+    MObject skinClusterObj = skinCluster.create("skinCluster");
+    this->dgModidier.renameNode(skinClusterObj, this->objName + "skinCluster");
+    this->dgModidier.doIt( );
+    
+    // 添加bindpose
+    MFnDependencyNode bindpose;
+    MObject bindPoseObj = bindpose.create("dagPose");
+    this->dgModidier.renameNode(bindPoseObj, this->objName + "bindpose");
+    this->dgModidier.doIt( );
+    // 添加 skinset
+    MObject skinsetObj = this->dgModidier.createNode("objectSet");
+    MFnDagNode skinset(skinClusterObj);
+    this->dgModidier.renameNode(skinsetObj, this->objName + "skinset");
+    this->dgModidier.doIt( );
+    
+    // 获得bindmesh
+    MFnMesh bindmesh(MFnTransform(this->bindObj).child(0));
+    
+    
+    // 连接bindpose和skincluster
+    CHECK_MSTATUS(this->dgModidier.connect(bindpose.findPlug("message"), skinCluster.findPlug("bindPose")));
+    // 连接skincluster 和mesh , skinobjset
+    CHECK_MSTATUS(this->dgModidier.connect(skinCluster.findPlug("outputGeometry").elementByLogicalIndex(0), bindmesh.findPlug("inMesh")));
+    //CHECK_MSTATUS(this->dgModidier.connect(skinCluster.findPlug("message"), skinset.findPlug("usedBy").elementByLogicalIndex(0)));
+    // 连接mesh 和skinset
+    /*CHECK_MSTATUS(this->dgModidier.connect(bindmesh.findPlug("instObjGroups").elementByLogicalIndex(0).elementByLogicalIndex(0).elementByLogicalIndex(0),
+                  skinset.findPlug("dagSetMembers").elementByLogicalIndex(0)));*/
+    // 连接skinobjset 和mesh
+    /*CHECK_MSTATUS(this->dgModidier.connect(skinset.findPlug("memberWireframeColor"),
+                  bindmesh.findPlug("instObjGroups").elementByLogicalIndex(0).elementByLogicalIndex(0).elementByLogicalIndex(2)));*/
+
+
+    
+    CHECK_MSTATUS(this->dgModidier.doIt( ));
+    // 准备迭代
+    MPlug weightList = skinCluster.findPlug("weightList");
+    int index = 0;
+    for (std::vector<MObject>::const_iterator joint = this->doolJoint.begin(); joint != doolJoint.end(); ++joint)
+    {
+        MFnIkJoint fnJoint(*joint);
+        // 连接骨骼和bindoise
+        CHECK_MSTATUS(this->dgModidier.connect(fnJoint.findPlug("message"), bindpose.findPlug("members").elementByLogicalIndex(index)));
+        CHECK_MSTATUS(this->dgModidier.connect(fnJoint.findPlug("bindPose"), bindpose.findPlug("worldMatrix").elementByLogicalIndex(index)));
+        // 连接骨骼和皮肤簇
+        //CHECK_MSTATUS(this->dgModidier.connect(fnJoint.findPlug("locklnfluenceWeights"), skinCluster.findPlug("lockWeights").elementByLogicalIndex(index)));
+        CHECK_MSTATUS(this->dgModidier.connect(fnJoint.findPlug("worldMatrix").elementByLogicalIndex(0), skinCluster.findPlug("matrix").elementByLogicalIndex(index)));
+        CHECK_MSTATUS(this->dgModidier.connect(fnJoint.findPlug("objectColorRGB"), skinCluster.findPlug("influenceColor").elementByLogicalIndex(index)));
+        CHECK_MSTATUS(this->dgModidier.doIt( ));
+        index++;
+    }
+
+    MFnDagNode fnbindObj(this->bindObj);
+    MItMeshVertex vex(fnbindObj.child(0));
+    for (vex.reset( ); !vex.isDone( ); vex.next( ))
+    {
+        int index = 0;
+        for (std::vector<MObject>::const_iterator joint = this->doolJoint.begin( ); joint != doolJoint.end( ); ++joint)
+        {
+            double weight = this->DoodleConvert.w.coeff(index, vex.index( ));
+            if (weight != 0.0) {
+                CHECK_MSTATUS(skinCluster.setWeights(MFnDagNode(fnbindObj.child(0)).dagPath( ), vex.currentItem( ), index, weight, false));
+            }
+            index++;
+        }
     }
 }
 
@@ -459,10 +661,10 @@ MStatus uninitializePlugin(MObject obj)
     return status;
 }
 
-DoodleDemBones::DoodleDemBones()
+DoodleDemBones::DoodleDemBones( )
 {
 }
 
-DoodleDemBones::~DoodleDemBones()
+DoodleDemBones::~DoodleDemBones( )
 {
 }
