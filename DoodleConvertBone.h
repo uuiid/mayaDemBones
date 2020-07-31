@@ -48,6 +48,11 @@ public:
 
 	void GetMeshData();
 
+	MStatus setOutBindWeight(MDataBlock& dataBlock);
+
+	MStatus setBindPose(MDataBlock& dataBlock);
+
+	MStatus setAim(MDataBlock& dataBlock);
 	//void createJoins(const std::vector<MString>& name);
 
 	//void addCurve();
@@ -87,21 +92,15 @@ public:
 	static MObject bindWeightsList;
 	// 子物体索引
 	//static MObject subjectIndex;
-	// 参考输出
-	static MObject localRotation;
-	static MObject localRotationList;
-	// 参考转换
-	static MObject localTranslation;
-	static MObject localTranslationList;
+	// 动画输出
+	static MObject localAnim;
+	static MObject localAnimList;
 	// 全局绑定矩阵输出
 	static MObject globalBindMatrices;
 	static MObject globalBindMatricesList;
-	// 本地旋转绑定pose
-	static MObject localBindPoseRotation;
-	static MObject localBindPoseRotationList;
-	// 本地输出平移pose
-	static MObject localBindPoseTranslation;
-	static MObject localBindPoseTranslationList;
+	// 本地绑定pose
+	static MObject localBindPose;
+	static MObject localBindPoseList;
 
 	// id
 	static const MTypeId id;

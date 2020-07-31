@@ -48,7 +48,7 @@
 #include <maya/MFnArrayAttrsData.h>
 #include <maya/MFnSkinCluster.h>
 #include <maya/MFnIkJoint.h>
-
+#include <maya/MTransformationMatrix.h>
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
 
@@ -78,20 +78,14 @@ MObject DoodleConvertBone::bindWeightsList;
 //MObject DoodleConvertBone::subjectIndex;
 //MObject DoodleConvertBone::subjectIndex;
 
-MObject DoodleConvertBone::localRotation;
-MObject DoodleConvertBone::localRotationList;
-
-MObject DoodleConvertBone::localTranslation;
-MObject DoodleConvertBone::localTranslationList;
+MObject DoodleConvertBone::localAnim;
+MObject DoodleConvertBone::localAnimList;
 
 MObject DoodleConvertBone::globalBindMatrices;
 MObject DoodleConvertBone::globalBindMatricesList;
 
-MObject DoodleConvertBone::localBindPoseRotation;
-MObject DoodleConvertBone::localBindPoseRotationList;
-
-MObject DoodleConvertBone::localBindPoseTranslation;
-MObject DoodleConvertBone::localBindPoseTranslationList;
+MObject DoodleConvertBone::localBindPose;
+MObject DoodleConvertBone::localBindPoseList;
 
 const MTypeId DoodleConvertBone::id(2333);
 
@@ -209,33 +203,18 @@ MStatus DoodleConvertBone::compute(const MPlug& plug, MDataBlock& dataBlock)
                                        _localBindPoseRotation_,
                                        _localBindPoseTranslation_);
         // 设置输出
-        MStatus status;
-        MArrayDataHandle bindWeightList_ = dataBlock.outputArrayValue(bindWeightsList,&status);
-        CHECK_MSTATUS(status);
-        MArrayDataBuilder buildBindWeightList_ = bindWeightList_.builder(&status);
-        CHECK_MSTATUS_AND_RETURN_IT(status);
-        CHECK_MSTATUS_AND_RETURN_IT(buildBindWeightList_.growArray(this->DoodleConvert.w.cols( )));
-        CHECK_MSTATUS_AND_RETURN_IT(bindWeightList_.set(buildBindWeightList_));
-        cout << bindWeightList_.elementCount( ) << endl;
-        // cout << this->DoodleConvert.w << endl;
-        for (int i = 0; i < this->DoodleConvert.w.cols( ); i++)
-        {
-            CHECK_MSTATUS_AND_RETURN_IT(bindWeightList_.jumpToArrayElement(i));
-            MArrayDataHandle hamdleBindWeight_ = bindWeightList_.outputArrayValue();
-            MArrayDataBuilder bindWeight_ = hamdleBindWeight_.builder(&status);
-            CHECK_MSTATUS_AND_RETURN_IT(status);
-            CHECK_MSTATUS_AND_RETURN_IT(bindWeight_.growArray(this->DoodleConvert.w.rows( )));
-            //MArrayDataHandle bindWeight_ = .outputArrayValue( );
-            for (int index = 0; index < this->DoodleConvert.w.rows( ); index++)
-            {
-                MDataHandle weight = bindWeight_.addElement(index, &status);
-                CHECK_MSTATUS_AND_RETURN_IT(status);
-                double __w = this->DoodleConvert.w.coeff(index, i);
-                // weight.setDouble(__w);
-            }
-            hamdleBindWeight_.set(bindWeight_);
-        }
-        bindWeightList_.setAllClean( );
+        CHECK_MSTATUS_AND_RETURN_IT(this->setOutBindWeight(dataBlock));
+        CHECK_MSTATUS_AND_RETURN_IT(this->setBindPose(dataBlock));
+        CHECK_MSTATUS_AND_RETURN_IT(this->setAim(dataBlock));
+        //MPlug plugGlobalBindMatrices(thisMObject( ), globalBindMatrices);
+        //for (int i = 0; i < this->DoodleConvert.nB; i++)
+        //{
+        //    CHECK_MSTATUS_AND_RETURN_IT(plugGlobalBindMatrices.
+        //                                selectAncestorLogicalIndex(i,globalBindMatricesList));
+        //    MDataHandle hGlobalBindMatrices = plugGlobalBindMatrices.constructHandle(dataBlock);
+        //    this->_globalBindMatrices_.block(0, 4 * i, 4, 4);
+        //    hGlobalBindMatrices.setMMatrix()
+        //}
     }
     else
     {
@@ -338,6 +317,94 @@ void DoodleConvertBone::GetMeshData()
             GetBindFrame(this->_inputmesh_);//获得绑定帧
         }
     }
+}
+
+MStatus DoodleConvertBone::setOutBindWeight(MDataBlock& dataBlock)
+{
+    MStatus status;
+    MPlug plugBindWeight(thisMObject( ), bindWeights);
+    for (int i = 0; i < this->DoodleConvert.w.cols( ); i++)
+    {
+        CHECK_MSTATUS_AND_RETURN_IT(plugBindWeight.selectAncestorLogicalIndex(i, bindWeightsList));
+        MDataHandle handleBindWeight = plugBindWeight.constructHandle(dataBlock);
+        MArrayDataHandle arrayHandleBindWeight(handleBindWeight, &status);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        MArrayDataBuilder arrayBuilderBindWeight = arrayHandleBindWeight.builder(&status);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        for (int index = 0; index < this->DoodleConvert.w.rows( ); index++)
+        {
+            MDataHandle handleWeight = arrayBuilderBindWeight.addElement(index, &status);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
+            handleWeight.setDouble(this->DoodleConvert.w.coeff(index, i));
+        }
+        CHECK_MSTATUS_AND_RETURN_IT(arrayHandleBindWeight.set(arrayBuilderBindWeight));
+        plugBindWeight.setValue(handleBindWeight);
+        plugBindWeight.destructHandle(handleBindWeight);
+    }
+    return MS::kSuccess;
+}
+
+MStatus DoodleConvertBone::setBindPose(MDataBlock& dataBlock)
+{
+    MStatus status;
+    MPlug plugBindPose(thisMObject( ), localBindPose);
+    for (int i = 0; i < this->DoodleConvert.nB; i++)
+    {
+        //获得属性
+        CHECK_MSTATUS_AND_RETURN_IT(plugBindPose.
+                                    selectAncestorLogicalIndex(i, localBindPoseList));
+        MDataHandle handleBindPose = plugBindPose.constructHandle(dataBlock);
+        MTransformationMatrix LocalBindPose;
+        Eigen::Vector3d doodleTran = this->_localBindPoseTranslation_.col(i).segment<3>(0);
+        //设置矩阵平移
+        CHECK_MSTATUS_AND_RETURN_IT(
+            LocalBindPose.setTranslation(
+            MVector(doodleTran.x( ), doodleTran.y( ), doodleTran.z( )),
+            MSpace::kWorld));
+        Eigen::Vector3d doodleRon = this->_localBindPoseRotation_.col(i).segment<3>(0);
+        double ro[3] = { doodleRon.x( ),doodleRon.y( ),doodleRon.z( ) };
+        //设置矩阵旋转
+        CHECK_MSTATUS_AND_RETURN_IT(LocalBindPose.setRotation(ro, MTransformationMatrix::RotationOrder::kXYZ));
+        handleBindPose.setMMatrix(LocalBindPose.asMatrix( ));
+        plugBindPose.setValue(handleBindPose);
+        plugBindPose.destructHandle(handleBindPose);
+    }
+    return MS::kSuccess;
+}
+
+MStatus DoodleConvertBone::setAim(MDataBlock& dataBlock)
+{
+    MStatus status;
+    MPlug plugLocalAnim(thisMObject( ), localAnim);
+    for (int ibone = 0; ibone < this->DoodleConvert.nB; ibone++)
+    {
+        CHECK_MSTATUS_AND_RETURN_IT(plugLocalAnim.selectAncestorLogicalIndex(ibone, localAnimList));
+        MDataHandle handleLocalAim = plugLocalAnim.constructHandle(dataBlock);
+        MArrayDataHandle arrayHandleAim(handleLocalAim, &status);//获得矩阵数组手柄
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        MArrayDataBuilder builderAim = arrayHandleAim.builder(&status);//获得数组矩阵生成器
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        for (int iframe = 0; iframe < this->DoodleConvert.nF; iframe++)
+        {
+            // 设置矩阵
+            MTransformationMatrix mTranLocalAim;
+            Eigen::Vector3d doodleTran = this->_localTranslation_.col(ibone).segment<3>(3 * iframe);
+            Eigen::Vector3d doodleRotn = this->_localRotation_.col(ibone).segment<3>(3 * iframe);
+            double ro[3] = { doodleRotn.x( ),doodleRotn.y( ),doodleRotn.z( ) };
+            CHECK_MSTATUS_AND_RETURN_IT(
+                mTranLocalAim.setTranslation(MVector(doodleTran.x( ), doodleTran.y( ), doodleTran.z( )),
+                MSpace::kWorld));
+            CHECK_MSTATUS_AND_RETURN_IT(mTranLocalAim.setRotation(ro,
+                                        MTransformationMatrix::RotationOrder::kXYZ));
+            MDataHandle handleAim = builderAim.addElement(iframe, &status);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
+            handleAim.setMMatrix(mTranLocalAim.asMatrix( ));
+        }
+        CHECK_MSTATUS_AND_RETURN_IT(arrayHandleAim.set(builderAim));
+        plugLocalAnim.setValue(handleLocalAim);
+        plugLocalAnim.destructHandle(handleLocalAim);
+    }
+    return MS::kSuccess;
 }
 
 //void DoodleConvertBone::createJoins(const std::vector<MString>& name)
@@ -523,93 +590,66 @@ MStatus DoodleConvertBone::initialize( ) {
     MFnCompoundAttribute comAttr;
     MFnMatrixAttribute matrixAttr;
     // 绑定权重
-    bindWeights = matrixAttr.create("bindWeights", "bw", MFnMatrixAttribute::Type::kDouble, &status);
-    CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(matrixAttr.setHidden(true));
-    CHECK_MSTATUS(matrixAttr.setArray(true));
+    bindWeights = numAttr.create("bindWeights", "bw", MFnNumericData::Type::kDouble, 0.0, &status);
+    CHECK_MSTATUS(numAttr.setArray(true));
+    CHECK_MSTATUS(numAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setHidden(true));
     CHECK_MSTATUS(addAttribute(bindWeights));
 
     bindWeightsList = comAttr.create("bindWeightsList", "bWl", &status);
-    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(comAttr.addChild(bindWeights));
-    CHECK_MSTATUS(comAttr.setHidden(true));
     CHECK_MSTATUS(comAttr.setArray(true));
+    CHECK_MSTATUS(comAttr.addChild(bindWeights));
+    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(comAttr.setHidden(true));
     CHECK_MSTATUS(comAttr.setNiceNameOverride("绑定权重"));
     CHECK_MSTATUS(addAttribute(bindWeightsList));
     
-    // 动画旋转
-    localRotation = matrixAttr.create("localRotation", "lr", MFnMatrixAttribute::Type::kDouble, &status);
-    CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(matrixAttr.setHidden(true));
+    // 动画矩阵
+    localAnim = matrixAttr.create("localRotation", "lr", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setArray(true));
-    CHECK_MSTATUS(addAttribute(localRotation));
-
-    localRotationList = comAttr.create("localRotationList", "lRl", &status);
-    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(comAttr.addChild(localRotation));
-    CHECK_MSTATUS(comAttr.setHidden(true));
-    CHECK_MSTATUS(comAttr.setArray(true));
-    CHECK_MSTATUS(comAttr.setNiceNameOverride("动画旋转"));
-    CHECK_MSTATUS(addAttribute(localRotationList));
-    
-    // 动画平移
-    localTranslation = matrixAttr.create("localTranslation", "lT", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(matrixAttr.setWritable(true));
     CHECK_MSTATUS(matrixAttr.setHidden(true));
-    CHECK_MSTATUS(matrixAttr.setArray(true));
-    CHECK_MSTATUS(addAttribute(localTranslation));
+    CHECK_MSTATUS(addAttribute(localAnim));
 
-    localTranslationList = comAttr.create("localTranslationList", "lTl", &status);
-    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(comAttr.addChild(localTranslation));
-    CHECK_MSTATUS(comAttr.setHidden(true));
+    localAnimList = comAttr.create("localRotationList", "lRl", &status);
     CHECK_MSTATUS(comAttr.setArray(true));
-    CHECK_MSTATUS(comAttr.setNiceNameOverride("动画平移"));
-    CHECK_MSTATUS(addAttribute(localTranslationList));
-    
+    CHECK_MSTATUS(comAttr.addChild(localAnim));
+    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(comAttr.setHidden(true));
+    CHECK_MSTATUS(comAttr.setNiceNameOverride("动画矩阵"));
+    CHECK_MSTATUS(addAttribute(localAnimList));
+
     // 全局绑定矩阵
     globalBindMatrices = matrixAttr.create("globalBindMatrices", "gbm", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(matrixAttr.setWritable(true));
     CHECK_MSTATUS(matrixAttr.setHidden(true));
-    CHECK_MSTATUS(matrixAttr.setArray(true));
     CHECK_MSTATUS(addAttribute(globalBindMatrices));
 
     globalBindMatricesList = comAttr.create("globalBindMatricesList", "gbml", &status);
-    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(comAttr.addChild(globalBindMatrices));
-    CHECK_MSTATUS(comAttr.setHidden(true));
     CHECK_MSTATUS(comAttr.setArray(true));
+    CHECK_MSTATUS(comAttr.addChild(globalBindMatrices));
+    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(comAttr.setHidden(true));
     comAttr.setNiceNameOverride("全局绑定矩阵");
     CHECK_MSTATUS(addAttribute(globalBindMatricesList));
     
     // 本地绑定pose
-    localBindPoseRotation = matrixAttr.create("localBindPoseRotation", "lbpr", MFnMatrixAttribute::Type::kDouble, &status);
+    localBindPose = matrixAttr.create("localBindPose", "lbp", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(matrixAttr.setWritable(true));
     CHECK_MSTATUS(matrixAttr.setHidden(true));
-    CHECK_MSTATUS(matrixAttr.setArray(true));
-    CHECK_MSTATUS(addAttribute(localBindPoseRotation));
+    CHECK_MSTATUS(addAttribute(localBindPose));
 
-    localBindPoseRotationList = comAttr.create("localBindPoseRotationList", "lprl", &status);
-    CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true))
-    CHECK_MSTATUS(comAttr.addChild(localBindPoseRotation));
-    CHECK_MSTATUS(comAttr.setHidden(true));
+    localBindPoseList = comAttr.create("localBindPoseList", "lpr", &status);
     CHECK_MSTATUS(comAttr.setArray(true));
-    CHECK_MSTATUS(comAttr.setNiceNameOverride("本地绑定pose"));
-    CHECK_MSTATUS(addAttribute(localBindPoseRotationList));
-    // 本地频移pose
-    localBindPoseTranslation = matrixAttr.create("localBindPoseTranslation", "lbpt", MFnMatrixAttribute::Type::kDouble, &status);
-    CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
-    CHECK_MSTATUS(matrixAttr.setHidden(true));
-    CHECK_MSTATUS(matrixAttr.setArray(true));
-    CHECK_MSTATUS(addAttribute(localBindPoseTranslation));
-
-    localBindPoseTranslationList = comAttr.create("localBindPoseTranslationList", "lptl", &status);
+    CHECK_MSTATUS(comAttr.addChild(localBindPose));
     CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true))
-    CHECK_MSTATUS(comAttr.addChild(localBindPoseTranslation));
     CHECK_MSTATUS(comAttr.setHidden(true));
-    CHECK_MSTATUS(comAttr.setArray(true));
-    CHECK_MSTATUS(comAttr.setNiceNameOverride("本地平移pose"));
-    CHECK_MSTATUS(addAttribute(localBindPoseTranslationList));
+    CHECK_MSTATUS(comAttr.setNiceNameOverride("本地绑定矩阵"));
+    CHECK_MSTATUS(addAttribute(localBindPoseList));
 
     // 添加影响
     CHECK_MSTATUS(attributeAffects(startFrame, bindWeightsList));
