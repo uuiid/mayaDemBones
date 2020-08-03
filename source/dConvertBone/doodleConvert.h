@@ -1,6 +1,11 @@
+#pragma once
+
+
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
-#include <maya>
+#include <maya/MGlobal.h>
+#include <maya/MComputation.h>
+
 class DoodleDemBones : public Dem::DemBonesExt<double, float> {
 public:
 	DoodleDemBones( );
@@ -26,6 +31,6 @@ public:
 	void cbWeightsIterBegin( ) override;
 	//	在每个局部权重更新迭代后调用的回调函数，如果返回true，则停止迭代。
 	bool cbWeightsIterEnd( ) override;
-private:
 	MComputation dolCom;
+private:
 };
