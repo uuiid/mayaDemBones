@@ -16,8 +16,16 @@ project("doodle_bone")
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/source")
 # specify project name
 
+# 添加我们自己的库
+
+add_subdirectory("source/dConvertBone")
+
+
+
+#搜索一些库
 find_package(Eigen3)
 find_path(EIGEN_INCLUDE_DIR
     NAMES 
@@ -27,7 +35,7 @@ find_path(EIGEN_INCLUDE_DIR
 )
 include_directories("${EIGEN_INCLUDE_DIR}")
 # specify project name
-set(PROJECT_NAME DoodleConvertBone)
+# set(PROJECT_NAME DoodleConvertBone)
 
 find_package(OpenMP REQUIRED)
 if (OPENMP_FOUND)
@@ -61,12 +69,8 @@ set(LIBRARIES
      OpenMayaAnim
 )
 
-
-
-
-
 # Build plugin
 build_plugin()
 
-install(TARGETS DoodleConvertBone
+install(TARGETS doodle_bone
     DESTINATION "C:/Users/teXiao/Documents/maya/plug-ins")

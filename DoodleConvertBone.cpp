@@ -49,12 +49,15 @@
 #include <maya/MFnSkinCluster.h>
 #include <maya/MFnIkJoint.h>
 #include <maya/MTransformationMatrix.h>
+#include <maya/MEulerRotation.h>
+
+//#include <maya/MFloatPointArray.h>
+//#include <maya/MFnMeshData.h>
 #include <Eigen/Dense>
 #include <DemBones/DemBonesExt.h>
-
+#include <DemBones/MatBlocks.h>
 #include "DoodleConvertBone.h"
 
-#define DIVISION(a) if(a) cout << "====================================================================================================" <<endl;
 
 MObject DoodleConvertBone::startFrame;
 MObject DoodleConvertBone::endFrame;
@@ -75,8 +78,8 @@ MObject DoodleConvertBone::weightsSmoothStep;
 MObject DoodleConvertBone::bindWeights;
 MObject DoodleConvertBone::bindWeightsList;
 
-//MObject DoodleConvertBone::subjectIndex;
-//MObject DoodleConvertBone::subjectIndex;
+MObject DoodleConvertBone::getOutPut;
+
 
 MObject DoodleConvertBone::localAnim;
 MObject DoodleConvertBone::localAnimList;
@@ -90,24 +93,24 @@ MObject DoodleConvertBone::localBindPoseList;
 const MTypeId DoodleConvertBone::id(2333);
 
 // CONSTRUCTOR:
-DoodleConvertBone::DoodleConvertBone()
+DoodleConvertBone::DoodleConvertBone( )
 {
     this->__bindFrame__ = 0;
     this->IsGetFrame = false;
 }
 
 // DESTRUCTOR:
-DoodleConvertBone::~DoodleConvertBone()
+DoodleConvertBone::~DoodleConvertBone( )
 {
 }
 
 // FOR CREATING AN INSTANCE OF THIS COMMAND:
-void* DoodleConvertBone::creator()
+void* DoodleConvertBone::creator( )
 {
     return new DoodleConvertBone;
 }
 
-MStatus DoodleConvertBone::AnalysisCommand(MDataBlock & datablock)
+MStatus DoodleConvertBone::getInputAttr(MDataBlock& datablock)
 {
     this->_startFrame_ = datablock.inputValue(startFrame).asInt( );
     this->_endFrame_ = datablock.inputValue(endFrame).asInt( );
@@ -137,7 +140,7 @@ MStatus DoodleConvertBone::AnalysisCommand(MDataBlock & datablock)
         MGlobal::displayError("骨骼的个数不可小于零");
         return MS::kFailure;
     }
-    if (datablock.inputValue(inputMesh).type() != MFnData::Type::kMesh) {
+    if (datablock.inputValue(inputMesh).type( ) != MFnData::Type::kMesh) {
         MGlobal::displayError("不是网格类型");
         return MS::kFailure;
     }
@@ -183,29 +186,35 @@ MStatus DoodleConvertBone::compute(const MPlug& plug, MDataBlock& dataBlock)
     bool treeBased = true;
     MStatus Doolstatus = MStatus::kSuccess;
     //帮助文档暂时不写
-    
-    CHECK_MSTATUS(this->AnalysisCommand(dataBlock));
+
+    CHECK_MSTATUS(this->getInputAttr(dataBlock));
     //获得网格体
     MFnMesh inputMesh_(this->_inputmesh_);
     this->initConvertAttr(inputMesh_);
     // 获得序列网格数据
-    this->GetMeshData();
+    this->GetMeshData( );
 
-    if (this->IsGetFrame && plug == bindWeights) {
+    //debug网格序列
+    //this->deubgMesh(dataBlock);
+
+    // 计算序列
+    if (this->IsGetFrame && plug == getOutPut) {
         // 设置计算需要的索引
         this->SetSubObjectIndex( );
         CHECK_MSTATUS(this->InitAndCimpute( ));
         // 获得计算输出
-        this->DoodleConvert.computeRTB(0, 
+        this->DoodleConvert.computeRTB(0,
                                        _localRotation_,
                                        _localTranslation_,
                                        _globalBindMatrices_,
                                        _localBindPoseRotation_,
-                                       _localBindPoseTranslation_);
+                                       _localBindPoseTranslation_,
+                                       false);
         // 设置输出
         CHECK_MSTATUS_AND_RETURN_IT(this->setOutBindWeight(dataBlock));
         CHECK_MSTATUS_AND_RETURN_IT(this->setBindPose(dataBlock));
         CHECK_MSTATUS_AND_RETURN_IT(this->setAim(dataBlock));
+        dataBlock.setClean(plug);
         //MPlug plugGlobalBindMatrices(thisMObject( ), globalBindMatrices);
         //for (int i = 0; i < this->DoodleConvert.nB; i++)
         //{
@@ -238,6 +247,7 @@ void DoodleConvertBone::SetSubObjectIndex( )
 
 void DoodleConvertBone::initConvertAttr(MFnMesh& inputMesh_)
 {
+    MStatus status;
     //设置静止的顶点数
     this->DoodleConvert.nV = inputMesh_.numVertices( );
     //设置一些全局值
@@ -245,11 +255,12 @@ void DoodleConvertBone::initConvertAttr(MFnMesh& inputMesh_)
     this->DoodleConvert.fTime.resize(this->DoodleConvert.nF);
     this->DoodleConvert.fStart.resize(this->DoodleConvert.nS + 1);
     this->DoodleConvert.fStart(0) = 0;
-    this->DoodleConvert.fv.resize(inputMesh_.numFaceVertices( ));
+    this->DoodleConvert.fv.resize(inputMesh_.numPolygons(&status));
+    CHECK_MSTATUS(status);
     this->DoodleConvert.subjectID.resize(this->DoodleConvert.nF);
 }
 
-void DoodleConvertBone::GetFrameMeshData(int frame,MObject& MobjMesh)
+void DoodleConvertBone::GetFrameMeshData(int frame, MObject& MobjMesh)
 {
     /// <summary>
     /// 获得传入帧的网格顶点数据
@@ -263,7 +274,7 @@ void DoodleConvertBone::GetFrameMeshData(int frame,MObject& MobjMesh)
     {
         int index = vexpoint.index( );
         MPoint pos = vexpoint.position(MSpace::kWorld);
-        this->DoodleConvert.v.col(index).segment<3>(3 * frame) << pos.x, pos.y, pos.z;
+        this->DoodleConvert.v.col(index).segment(3 * frame, 3) << pos.x, pos.y, pos.z;
     }
 }
 
@@ -273,6 +284,7 @@ void DoodleConvertBone::GetBindFrame(MObject& MobjMesh)
     /// 获得网格中绑定帧的数据
     /// </summary>
     /// <param name="MobjMesh"></param>
+    //this->DoodleConvert.fv.clear( );
     MItMeshVertex vexpointBindFrame(MobjMesh);
     MGlobal::displayInfo("已获得绑定帧");
     this->IsGetFrame = true;
@@ -285,11 +297,11 @@ void DoodleConvertBone::GetBindFrame(MObject& MobjMesh)
         this->DoodleConvert.u.col(index).segment(0, 3) << pos.x, pos.y, pos.z;
     }
     // 获得相对于polygon obj的顶点
-    MItMeshPolygon vexIter(MobjMesh);
-    for (vexIter.reset( ); !vexIter.isDone( ); vexIter.next( )) {
-        int index = vexIter.index( );
+    MItMeshPolygon polyIter(MobjMesh);
+    for (polyIter.reset( ); !polyIter.isDone( ); polyIter.next( )) {
+        int index = polyIter.index( );
         MIntArray vexIndexArray;
-        vexIter.getVertices(vexIndexArray);
+        polyIter.getVertices(vexIndexArray);
 
         std::vector<int> mindex;
         for (unsigned int vexindex = 0; vexindex < vexIndexArray.length( ); vexindex++)
@@ -300,7 +312,7 @@ void DoodleConvertBone::GetBindFrame(MObject& MobjMesh)
     }
 }
 
-void DoodleConvertBone::GetMeshData()
+void DoodleConvertBone::GetMeshData( )
 {
     /// <summary>
     /// 获得序列网格数据
@@ -309,7 +321,7 @@ void DoodleConvertBone::GetMeshData()
     MAnimControl aimControl;
     int currentFrame = aimControl.currentTime( ).asUnits(MTime::uiUnit( ));// 获得当前时间
     int frame = currentFrame - this->_startFrame_;// 获得内部帧
-    if ((frame >= 0) && (frame < (this->_endFrame_ - this->_startFrame_))) { 
+    if ((frame >= 0) && (frame < (this->_endFrame_ - this->_startFrame_))) {
         //当帧大于零时开始获得数据 小于最小帧时取消获取
         MGlobal::displayInfo("已获得" + MString( ) + (currentFrame)+"帧数据");
         this->GetFrameMeshData(frame, this->_inputmesh_);//设置解算帧
@@ -368,7 +380,9 @@ MStatus DoodleConvertBone::setBindPose(MDataBlock& dataBlock)
         handleBindPose.setMMatrix(LocalBindPose.asMatrix( ));
         plugBindPose.setValue(handleBindPose);
         plugBindPose.destructHandle(handleBindPose);
+        CHECK_MSTATUS_AND_RETURN_IT(dataBlock.setClean(plugBindPose));
     }
+    CHECK_MSTATUS_AND_RETURN_IT(dataBlock.setClean(localBindPoseList));
     return MS::kSuccess;
 }
 
@@ -390,12 +404,16 @@ MStatus DoodleConvertBone::setAim(MDataBlock& dataBlock)
             MTransformationMatrix mTranLocalAim;
             Eigen::Vector3d doodleTran = this->_localTranslation_.col(ibone).segment<3>(3 * iframe);
             Eigen::Vector3d doodleRotn = this->_localRotation_.col(ibone).segment<3>(3 * iframe);
-            double ro[3] = { doodleRotn.x( ),doodleRotn.y( ),doodleRotn.z( ) };
+            // 设置旋转
+            MEulerRotation rot;
+            rot.x = doodleRotn[0];
+            rot.y = doodleRotn[1];
+            rot.z = doodleRotn[2];
+            mTranLocalAim = mTranLocalAim.rotateBy(rot, MSpace::kTransform, &status);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
             CHECK_MSTATUS_AND_RETURN_IT(
-                mTranLocalAim.setTranslation(MVector(doodleTran.x( ), doodleTran.y( ), doodleTran.z( )),
+                mTranLocalAim.setTranslation(MVector(doodleTran[0], doodleTran[1], doodleTran[2]),
                 MSpace::kWorld));
-            CHECK_MSTATUS_AND_RETURN_IT(mTranLocalAim.setRotation(ro,
-                                        MTransformationMatrix::RotationOrder::kXYZ));
             MDataHandle handleAim = builderAim.addElement(iframe, &status);
             CHECK_MSTATUS_AND_RETURN_IT(status);
             handleAim.setMMatrix(mTranLocalAim.asMatrix( ));
@@ -406,6 +424,46 @@ MStatus DoodleConvertBone::setAim(MDataBlock& dataBlock)
     }
     return MS::kSuccess;
 }
+
+//void DoodleConvertBone::deubgMesh(MDataBlock& dataBlock)
+//{
+//    MStatus status;
+//    MAnimControl aimControl;
+//    int currentFrame = aimControl.currentTime( ).asUnits(MTime::uiUnit( ));// 获得当前时间
+//    const int frame = currentFrame - this->_startFrame_;// 获得内部帧
+//
+//    MDataHandle handleOutmesh = dataBlock.outputValue(doutMesh);
+//    MFnMeshData meshpointData;
+//    MObject dataobj = meshpointData.create(&status);
+//    CHECK_MSTATUS(status);
+//    MFnMesh test;
+//    MFloatPointArray meshpoint;
+//    if ((frame >= 0) && (frame < (this->_endFrame_ - this->_startFrame_)) && (this->_nBones_ == 1)) {
+//        for (int i = 0; i < this->DoodleConvert.nV; i++)
+//        {
+//            meshpoint.append(this->DoodleConvert.v.col(i).segment(3 * frame, 3)[0],
+//                             this->DoodleConvert.v.col(i).segment(3 * frame, 3)[1],
+//                             this->DoodleConvert.v.col(i).segment(3 * frame, 3)[2]);
+//        }
+//        MIntArray polygonCounts;
+//        MIntArray polygonConnects;
+//        for (int i = 0; i < this->DoodleConvert.fv.size( ); i++)
+//        {
+//            polygonCounts.append(this->DoodleConvert.fv[i].size( ));
+//            for (int p = 0; p < this->DoodleConvert.fv[i].size( ); p++)
+//            {
+//                polygonConnects.append(this->DoodleConvert.fv[i][p]);
+//            }
+//        }
+//        test.create(this->DoodleConvert.nV,
+//                                     this->DoodleConvert.fv.size( ),
+//                                     meshpoint,
+//                                     polygonCounts,
+//                                     polygonConnects,
+//                                     dataobj);
+//        handleOutmesh.set(dataobj);
+//    }
+//}
 
 //void DoodleConvertBone::createJoins(const std::vector<MString>& name)
 //{
@@ -494,7 +552,7 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(tattr.setStorable(true));
     CHECK_MSTATUS(addAttribute(inputMesh));
     // 骨骼数量
-    nBones = numAttr.create("nBones", "nB", MFnNumericData::Type::kInt, 60, &status);
+    nBones = numAttr.create("nBones", "nB", MFnNumericData::Type::kInt, 50, &status);
     CHECK_MSTATUS(status);
     CHECK_MSTATUS(numAttr.setWritable(true));
     CHECK_MSTATUS(numAttr.setHidden(false));
@@ -586,7 +644,13 @@ MStatus DoodleConvertBone::initialize( ) {
     /// 输出属性
     /// </summary>
     /// <returns></returns>
-    
+    getOutPut = numAttr.create("getOutPut", "out", MFnNumericData::Type::kDouble, 0.0, &status);
+    CHECK_MSTATUS(status);
+    CHECK_MSTATUS(numAttr.setUsesArrayDataBuilder(true));
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setHidden(true));
+    CHECK_MSTATUS(addAttribute(getOutPut));
+
     MFnCompoundAttribute comAttr;
     MFnMatrixAttribute matrixAttr;
     // 绑定权重
@@ -604,16 +668,16 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(comAttr.setHidden(true));
     CHECK_MSTATUS(comAttr.setNiceNameOverride("绑定权重"));
     CHECK_MSTATUS(addAttribute(bindWeightsList));
-    
+
     // 动画矩阵
-    localAnim = matrixAttr.create("localRotation", "lr", MFnMatrixAttribute::Type::kDouble, &status);
+    localAnim = matrixAttr.create("localAnim", "la", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setArray(true));
     CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
     CHECK_MSTATUS(matrixAttr.setWritable(true));
     CHECK_MSTATUS(matrixAttr.setHidden(true));
     CHECK_MSTATUS(addAttribute(localAnim));
 
-    localAnimList = comAttr.create("localRotationList", "lRl", &status);
+    localAnimList = comAttr.create("localAnimList", "lal", &status);
     CHECK_MSTATUS(comAttr.setArray(true));
     CHECK_MSTATUS(comAttr.addChild(localAnim));
     CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true));
@@ -635,7 +699,7 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(comAttr.setHidden(true));
     comAttr.setNiceNameOverride("全局绑定矩阵");
     CHECK_MSTATUS(addAttribute(globalBindMatricesList));
-    
+
     // 本地绑定pose
     localBindPose = matrixAttr.create("localBindPose", "lbp", MFnMatrixAttribute::Type::kDouble, &status);
     CHECK_MSTATUS(matrixAttr.setUsesArrayDataBuilder(true));
@@ -647,25 +711,26 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(comAttr.setArray(true));
     CHECK_MSTATUS(comAttr.addChild(localBindPose));
     CHECK_MSTATUS(comAttr.setUsesArrayDataBuilder(true))
-    CHECK_MSTATUS(comAttr.setHidden(true));
+        CHECK_MSTATUS(comAttr.setHidden(true));
     CHECK_MSTATUS(comAttr.setNiceNameOverride("本地绑定矩阵"));
     CHECK_MSTATUS(addAttribute(localBindPoseList));
 
+
     // 添加影响
-    CHECK_MSTATUS(attributeAffects(startFrame, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(endFrame, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(inputMesh, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nBones, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nInitIters, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nIters, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nTransIters, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(isBindUpdate, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(transAffine, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(transAffineNorm, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nWeightsIters, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(nonZeroWeightsNum, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(weightsSmooth, bindWeightsList));
-    CHECK_MSTATUS(attributeAffects(weightsSmoothStep, bindWeightsList));
+    CHECK_MSTATUS(attributeAffects(startFrame, getOutPut));
+    CHECK_MSTATUS(attributeAffects(endFrame, getOutPut));
+    CHECK_MSTATUS(attributeAffects(inputMesh, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nBones, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nInitIters, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nIters, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nTransIters, getOutPut));
+    CHECK_MSTATUS(attributeAffects(isBindUpdate, getOutPut));
+    CHECK_MSTATUS(attributeAffects(transAffine, getOutPut));
+    CHECK_MSTATUS(attributeAffects(transAffineNorm, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nWeightsIters, getOutPut));
+    CHECK_MSTATUS(attributeAffects(nonZeroWeightsNum, getOutPut));
+    CHECK_MSTATUS(attributeAffects(weightsSmooth, getOutPut));
+    CHECK_MSTATUS(attributeAffects(weightsSmoothStep, getOutPut));
 
     return status;
 }
@@ -701,10 +766,10 @@ MStatus uninitializePlugin(MObject obj)
     return status;
 }
 
-DoodleDemBones::DoodleDemBones()
+DoodleDemBones::DoodleDemBones( )
 {
 }
 
-DoodleDemBones::~DoodleDemBones()
+DoodleDemBones::~DoodleDemBones( )
 {
 }
