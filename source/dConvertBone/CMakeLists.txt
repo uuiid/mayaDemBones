@@ -38,6 +38,8 @@ set(SOURCE_FILES
    doodleConvert.h
    doodleConvertPlug.cpp
    doodleConvertPlug.h
+   doodleWeight.cpp
+   doodleWeight.h
    plugMain.cpp
 )
 

@@ -11,12 +11,12 @@ DoodleDemBones::~DoodleDemBones( )
 
 void DoodleDemBones::cbInitSplitBegin( )
 {
-    MGlobal::displayInfo("开始分割");
+    //MGlobal::displayInfo("分割骨骼个数 = " + MString( ) + nB);
+    //MGlobal::displayInfo("开始分割");
 }
-
 void DoodleDemBones::cbInitSplitEnd( )
 {
-    //MGlobal::displayInfo("分割骨骼个数 : " + nB);
+    MGlobal::displayInfo("分割骨骼个数 = " + MString( ) + nB);
 }
 
 void DoodleDemBones::cbIterBegin( )
@@ -61,7 +61,7 @@ void DoodleDemBones::cbWeightsIterBegin( )
 
 bool DoodleDemBones::cbWeightsIterEnd( )
 {
-    MGlobal::displayInfo("权重迭代结束");
+    //MGlobal::displayInfo("权重迭代结束");
     if (this->dolCom.isInterruptRequested( )) {
         return true;
     }

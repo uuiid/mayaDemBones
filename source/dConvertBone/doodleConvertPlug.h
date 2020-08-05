@@ -60,8 +60,10 @@ public:
 	// 蒙皮权重
 	static MObject bindWeights;
 	static MObject bindWeightsList;
-	// 子物体索引
+	// 获得计算
 	static MObject getOutPut;
+	// 拉取每帧动画
+	static MObject getFrameData;
 	// 动画输出
 	static MObject localAnim;
 	static MObject localAnimList;
