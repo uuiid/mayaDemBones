@@ -1,4 +1,6 @@
 #include "doodleConvertPlug.h"
+#include "doodleWeight.h"
+
 #include <maya/MFnPlugin.h>
 
 MStatus initializePlugin(MObject obj)
@@ -10,6 +12,7 @@ MStatus initializePlugin(MObject obj)
                                  DoodleConvertBone::id,
                                  DoodleConvertBone::creator,
                                  DoodleConvertBone::initialize);
+    //MPxNode::kLocatorNode
     if (!status) {
         status.perror("registerCommand");
         return status;

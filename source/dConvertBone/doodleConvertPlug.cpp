@@ -39,7 +39,7 @@ MObject DoodleConvertBone::bindWeights;
 MObject DoodleConvertBone::bindWeightsList;
 
 MObject DoodleConvertBone::getOutPut;
-
+MObject DoodleConvertBone::getFrameData;
 
 MObject DoodleConvertBone::localAnim;
 MObject DoodleConvertBone::localAnimList;
@@ -134,27 +134,13 @@ MStatus DoodleConvertBone::InitAndCimpute( )
     MGlobal::displayInfo("开始计算权重......请等待");
     this->DoodleConvert.compute( );
     this->DoodleConvert.dolCom.endComputation( );
+    MGlobal::displayInfo("===========解算完成============");
     return MS::kSuccess;
 }
 
 
 MStatus DoodleConvertBone::compute(const MPlug& plug, MDataBlock& dataBlock)
 {
-    bool debug = true;
-    bool treeBased = true;
-    MStatus Doolstatus = MStatus::kSuccess;
-    //帮助文档暂时不写
-
-    CHECK_MSTATUS(this->getInputAttr(dataBlock));
-    //获得网格体
-    MFnMesh inputMesh_(this->_inputmesh_);
-    this->initConvertAttr(inputMesh_);
-    // 获得序列网格数据
-    this->GetMeshData( );
-
-    //debug网格序列
-    //this->deubgMesh(dataBlock);
-
     // 计算序列
     if (this->IsGetFrame && plug == getOutPut) {
         // 设置计算需要的索引
@@ -173,6 +159,23 @@ MStatus DoodleConvertBone::compute(const MPlug& plug, MDataBlock& dataBlock)
         CHECK_MSTATUS_AND_RETURN_IT(this->setBindPose(dataBlock));
         CHECK_MSTATUS_AND_RETURN_IT(this->setAim(dataBlock));
         dataBlock.setClean(plug);
+    }
+    //获得每帧数据
+    else if (plug == getFrameData)
+    {
+        bool debug = true;
+        bool treeBased = true;
+        MStatus Doolstatus = MStatus::kSuccess;
+        //帮助文档暂时不写
+
+        CHECK_MSTATUS(this->getInputAttr(dataBlock));
+        //获得网格体
+        MFnMesh inputMesh_(this->_inputmesh_);
+        this->initConvertAttr(inputMesh_);
+        // 获得序列网格数据
+        this->GetMeshData( );
+        MDataHandle handleOutFrame = dataBlock.outputValue(getFrameData);
+        handleOutFrame.set(1.0);
     }
     else
     {
@@ -385,7 +388,9 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setHidden(false));
     CHECK_MSTATUS(numAttr.setChannelBox(true));
     CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("开始帧"))
     CHECK_MSTATUS(addAttribute(startFrame));
+    
     // 结束帧设置
     endFrame = numAttr.create("endFrame", "ef", MFnNumericData::Type::kInt, 80, &status);
     CHECK_MSTATUS(status);
@@ -393,6 +398,7 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setHidden(false));
     CHECK_MSTATUS(numAttr.setChannelBox(true));
     CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("结束帧"))
     CHECK_MSTATUS(addAttribute(endFrame));
     //绑定帧
     bindFrame = numAttr.create("bindFrame", "bf", MFnNumericData::Type::kInt, 35, &status);
@@ -401,12 +407,14 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setHidden(false));
     CHECK_MSTATUS(numAttr.setChannelBox(true));
     CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("绑定帧"))
     CHECK_MSTATUS(addAttribute(bindFrame));
     // 输入网格设置
     inputMesh = tattr.create("inputMesh", "inm", MFnData::kMesh, MObject::kNullObj, &status);
     CHECK_MSTATUS(status);
     CHECK_MSTATUS(tattr.setWritable(true));
     CHECK_MSTATUS(tattr.setStorable(true));
+    CHECK_MSTATUS(tattr.setNiceNameOverride("输入网格"))
     CHECK_MSTATUS(addAttribute(inputMesh));
     // 骨骼数量
     nBones = numAttr.create("nBones", "nB", MFnNumericData::Type::kInt, 50, &status);
@@ -415,6 +423,7 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setHidden(false));
     CHECK_MSTATUS(numAttr.setChannelBox(true));
     CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("骨骼目标数量"))
     CHECK_MSTATUS(addAttribute(nBones));
     // 初始集群拆分次数
     nInitIters = numAttr.create("nInitIters", "nIt", MFnNumericData::Type::kInt, 10, &status);
@@ -423,6 +432,7 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setHidden(false));
     CHECK_MSTATUS(numAttr.setChannelBox(true));
     CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("初始拆分迭代数"))
     CHECK_MSTATUS(addAttribute(nInitIters));
     // 总体迭代次数
     nIters = numAttr.create("nIters", "nIters", MFnNumericData::Type::kInt64, 30, &status);
@@ -442,59 +452,59 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(addAttribute(nTransIters));
     // 更新绑定
     isBindUpdate = numAttr.create("isBindUpdate", "isB", MFnNumericData::Type::kBoolean, 0, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(true);
-    numAttr.setNiceNameOverride("更新绑定");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("更新绑定"));
     CHECK_MSTATUS(addAttribute(isBindUpdate));
     //平移约束
     transAffine = numAttr.create("transAffine", "traf", MFnNumericData::Type::kDouble, 10, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("平移约束");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("平移约束"));
     CHECK_MSTATUS(addAttribute(transAffine));
     //旋转约束
     transAffineNorm = numAttr.create("transAffineNorm", "trafn", MFnNumericData::Type::kDouble, 4, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("旋转约束");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("旋转约束"));
     CHECK_MSTATUS(addAttribute(transAffineNorm));
     //权重次级迭代
     nWeightsIters = numAttr.create("nWeightsIters", "nWI", MFnNumericData::Type::kInt64, 3, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("权重次级迭代");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("权重次级迭代"));
     CHECK_MSTATUS(addAttribute(nWeightsIters));
     //权重次级迭代
     nonZeroWeightsNum = numAttr.create("nonZeroWeightsNum", "nZWN", MFnNumericData::Type::kInt64, 8, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("非零权重骨骼数");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("非零权重骨骼数"));
     CHECK_MSTATUS(addAttribute(nonZeroWeightsNum));
     //权重平滑约束
-    weightsSmooth = numAttr.create("weightsSmooth", "wS", MFnNumericData::Type::kDouble, 0.0001, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("权重平滑约束");
+    weightsSmooth = numAttr.create("weightsSmooth", "wS", MFnNumericData::Type::kDouble, 0.0035, &status);
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("权重平滑约束"));
     CHECK_MSTATUS(addAttribute(weightsSmooth));
     //权重平滑步长
     weightsSmoothStep = numAttr.create("weightsSmoothStep", "wSS", MFnNumericData::Type::kDouble, 0.5, &status);
-    numAttr.setWritable(true);
-    numAttr.setStorable(true);
-    numAttr.setChannelBox(true);
-    numAttr.setHidden(false);
-    numAttr.setNiceNameOverride("权重平滑步长");
+    CHECK_MSTATUS(numAttr.setWritable(true));
+    CHECK_MSTATUS(numAttr.setStorable(true));
+    CHECK_MSTATUS(numAttr.setChannelBox(true));
+    CHECK_MSTATUS(numAttr.setHidden(false));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("权重平滑步长"));
     CHECK_MSTATUS(addAttribute(weightsSmoothStep));
 
     /// <summary>
@@ -507,6 +517,12 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(numAttr.setWritable(true));
     CHECK_MSTATUS(numAttr.setHidden(true));
     CHECK_MSTATUS(addAttribute(getOutPut));
+
+    getFrameData = numAttr.create("getFrameData", "gfd", MFnNumericData::Type::kDouble, 0.0, &status);
+    CHECK_MSTATUS(status);
+    CHECK_MSTATUS(numAttr.setHidden(true));
+    CHECK_MSTATUS(numAttr.setNiceNameOverride("获得帧序列"))
+    CHECK_MSTATUS(addAttribute(getFrameData));
 
     MFnCompoundAttribute comAttr;
     MFnMatrixAttribute matrixAttr;
@@ -586,6 +602,22 @@ MStatus DoodleConvertBone::initialize( ) {
     CHECK_MSTATUS(attributeAffects(transAffineNorm, getOutPut));
     CHECK_MSTATUS(attributeAffects(nWeightsIters, getOutPut));
     CHECK_MSTATUS(attributeAffects(nonZeroWeightsNum, getOutPut));
+    CHECK_MSTATUS(attributeAffects(weightsSmooth, getOutPut));
+    CHECK_MSTATUS(attributeAffects(weightsSmoothStep, getOutPut));
+
+    // 添加影响
+    CHECK_MSTATUS(attributeAffects(startFrame, getFrameData));
+    CHECK_MSTATUS(attributeAffects(endFrame, getFrameData));
+    CHECK_MSTATUS(attributeAffects(inputMesh, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nBones, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nInitIters, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nIters, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nTransIters, getFrameData));
+    CHECK_MSTATUS(attributeAffects(isBindUpdate, getFrameData));
+    CHECK_MSTATUS(attributeAffects(transAffine, getFrameData));
+    CHECK_MSTATUS(attributeAffects(transAffineNorm, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nWeightsIters, getFrameData));
+    CHECK_MSTATUS(attributeAffects(nonZeroWeightsNum, getFrameData));
     CHECK_MSTATUS(attributeAffects(weightsSmooth, getOutPut));
     CHECK_MSTATUS(attributeAffects(weightsSmoothStep, getOutPut));
 
