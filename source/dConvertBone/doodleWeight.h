@@ -9,16 +9,16 @@ public:
 	~DoodleWeight( ) override;
 
 	static void* creator( );
-	// ÉèÖÃÓï·¨½âÎöÆ÷
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	static MSyntax newSyntax( );
-	//Êµ¼Ê¹¤×÷ÄÚÈİ
+	//Êµï¿½Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	MStatus doIt(const MArgList& arg) override;
-	//Ö¸Ê¾ÊÇ·ñ¿ÉÒÔ³·Ïú
+	//Ö¸Ê¾ï¿½Ç·ï¿½ï¿½ï¿½Ô³ï¿½ï¿½ï¿½
 	bool isUndoable() const override;
-	// Ö¸Ê¾ÊÇ·ñ¾ßÓĞÓï·¨Ö¸Ê¾Æ÷
+	// Ö¸Ê¾ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï·¨Ö¸Ê¾ï¿½ï¿½
 	bool hasSyntax( ) const override;
 
-	// ½âÎö²ÎÊıº¯Êı
+	// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	MStatus getsyntaxFlag(const MArgList& arg);
 private:
 	MString commNodeString;

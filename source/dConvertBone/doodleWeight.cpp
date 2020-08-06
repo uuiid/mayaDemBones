@@ -75,7 +75,7 @@ MStatus DoodleWeight::getsyntaxFlag(const MArgList& arg)
     }
     else
     {
-        displayError("ÇëÉèÖÃ×ª»»½Úµã");
+        displayError("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½Úµï¿½");
         return MS::kFailure;
     }
     if (argData.isFlagSet("-doodleSkinCluster"))
@@ -84,7 +84,7 @@ MStatus DoodleWeight::getsyntaxFlag(const MArgList& arg)
     }
     else
     {
-        displayError("ÇëÉèÖÃÆ¤·ô´Ø½Úµã");
+        displayError("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¤ï¿½ï¿½ï¿½Ø½Úµï¿½");
         return MS::kFailure;
     }
     return MS::kSuccess;
