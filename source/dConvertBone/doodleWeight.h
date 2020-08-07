@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <maya/MGlobal.h>
 #include <maya/MPxCommand.h>
@@ -9,16 +9,16 @@ public:
 	~DoodleWeight( ) override;
 
 	static void* creator( );
-	// �����﷨������
+	// 创建语法对象
 	static MSyntax newSyntax( );
-	//ʵ�ʹ�������
+	//工作
 	MStatus doIt(const MArgList& arg) override;
-	//ָʾ�Ƿ���Գ���
+	//不可撤销
 	bool isUndoable() const override;
-	// ָʾ�Ƿ�����﷨ָʾ��
+	//有语法对象
 	bool hasSyntax( ) const override;
 
-	// ������������
+	//获得传入参数
 	MStatus getsyntaxFlag(const MArgList& arg);
 private:
 	MString commNodeString;

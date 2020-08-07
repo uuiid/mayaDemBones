@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include "doodleConvert.h"
 #include <maya/MGlobal.h>
@@ -35,17 +35,17 @@ public:
 	MStatus getInputAttr(MDataBlock& datablock);
 
 	MStatus InitAndCimpute( );
-	// ºËĞÄ×ª»¯ÀàÊµÀı
+	// æ ¸å¿ƒè½¬åŒ–ç±»å®ä¾‹
 	DoodleDemBones DoodleConvert;
 	
-	// ±È½ÏÖØÒªµÄÖµ
+	// æ¯”è¾ƒé‡è¦çš„å€¼
 	static MObject startFrame;
 	static MObject endFrame;
 	static MObject inputMesh;
 	static MObject bindFrame;
 	static MObject nBones;
 
-	// »ñµÃÉèÖÃÖµ
+	// è·å¾—è®¾ç½®å€¼
 	static MObject nInitIters;
 	static MObject nIters;
 	static MObject nTransIters;
@@ -57,20 +57,20 @@ public:
 	static MObject weightsSmooth;
 	static MObject weightsSmoothStep;
 
-	// ÃÉÆ¤È¨ÖØ
+	// è’™çš®æƒé‡
 	static MObject bindWeights;
 	static MObject bindWeightsList;
-	// »ñµÃ¼ÆËã
+	// è·å¾—è®¡ç®—
 	static MObject getOutPut;
-	// À­È¡Ã¿Ö¡¶¯»­
+	// æ‹‰å–æ¯å¸§åŠ¨ç”»
 	static MObject getFrameData;
-	// ¶¯»­Êä³ö
+	// åŠ¨ç”»è¾“å‡º
 	static MObject localAnim;
 	static MObject localAnimList;
-	// È«¾Ö°ó¶¨¾ØÕóÊä³ö
+	// å…¨å±€ç»‘å®šçŸ©é˜µè¾“å‡º
 	static MObject globalBindMatrices;
 	static MObject globalBindMatricesList;
-	// ±¾µØ°ó¶¨pose
+	// æœ¬åœ°ç»‘å®špose
 	static MObject localBindPose;
 	static MObject localBindPoseList;
 
@@ -96,17 +96,17 @@ private:
 	MObject _inputmesh_;
 
 
-	// ÃÉÆ¤È¨ÖØ
+	// è’™çš®æƒé‡
 	Eigen::MatrixXd _bindWeights_;
-	// ²Î¿¼Êä³ö
+	// å‚è€ƒè¾“å‡º
 	Eigen::MatrixXd _localRotation_;
-	// ²Î¿¼×ª»»
+	// å‚è€ƒè½¬æ¢
 	Eigen::MatrixXd _localTranslation_;
-	// È«¾Ö°ó¶¨¾ØÕóÊä³ö
+	// å…¨å±€ç»‘å®šçŸ©é˜µè¾“å‡º
 	Eigen::MatrixXd _globalBindMatrices_;
-	// ±¾µØĞı×ª°ó¶¨pose
+	// æœ¬åœ°æ—‹è½¬ç»‘å®špose
 	Eigen::MatrixXd _localBindPoseRotation_;
-	// ±¾µØÊä³öÆ½ÒÆpose
+	// æœ¬åœ°è¾“å‡ºå¹³ç§»pose
 	Eigen::MatrixXd _localBindPoseTranslation_;
 
 	int __bindFrame__;
