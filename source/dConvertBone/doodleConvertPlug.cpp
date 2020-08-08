@@ -125,7 +125,8 @@ MStatus DoodleConvertBone::getInputAttr(MDataBlock& datablock)
 
 MStatus DoodleConvertBone::InitAndCimpute( )
 {
-
+    this->DoodleConvert.w.resize(0, 0);
+    this->DoodleConvert.m.resize(0, 0);
 
     MGlobal::displayInfo("开始计算分布骨骼......请等待");
     this->DoodleConvert.dolCom.beginComputation( );
@@ -166,7 +167,6 @@ MStatus DoodleConvertBone::compute(const MPlug& plug, MDataBlock& dataBlock)
         bool debug = true;
         bool treeBased = true;
         MStatus Doolstatus = MStatus::kSuccess;
-        //帮助文档暂时不写
 
         CHECK_MSTATUS(this->getInputAttr(dataBlock));
         //获得网格体
