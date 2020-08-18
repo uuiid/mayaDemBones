@@ -11,6 +11,12 @@
 #include <maya/MItMeshVertex.h>
 #include <maya/MComputation.h>
 
+#include <maya/MFnIkJoint.h>
+#include <maya/MDataHandle.h>
+#include <maya/MDagModifier.h>
+#include <maya/MFnAnimCurve.h>
+#include <maya/MQuaternion.h>
+#include <maya/MEulerRotation.h>
 DoodleWeight::DoodleWeight( )
 {
 }
@@ -33,15 +39,24 @@ MStatus DoodleWeight::doIt(const MArgList& arg)
     MSelectionList selectList;
     CHECK_MSTATUS_AND_RETURN_IT(selectList.add(commNodeString));
     CHECK_MSTATUS_AND_RETURN_IT(selectList.add(skinNodeString));
-    MObject commNodeObj;
-    MObject skinNodeObj;
+
     CHECK_MSTATUS_AND_RETURN_IT(selectList.getDependNode(0, commNodeObj));
     CHECK_MSTATUS_AND_RETURN_IT(selectList.getDependNode(1, skinNodeObj));
+    // 创建动画曲线
+    CHECK_MSTATUS_AND_RETURN_IT(connectAimCurve( ));
+    // 复制权重
+    CHECK_MSTATUS_AND_RETURN_IT(copyWeight())
+    return status;
+}
 
+MStatus DoodleWeight::copyWeight()
+{
     MFnDependencyNode commNode;
     MFnSkinCluster skinNode;
     CHECK_MSTATUS_AND_RETURN_IT(commNode.setObject(commNodeObj));
     CHECK_MSTATUS_AND_RETURN_IT(skinNode.setObject(skinNodeObj));
+
+    MStatus status;
     //if (!(commNode.className( ) == "DoodleConvertBone"))
     //{
     //    displayError("不是doodle转换节点");
@@ -56,7 +71,7 @@ MStatus DoodleWeight::doIt(const MArgList& arg)
     CHECK_MSTATUS_AND_RETURN_IT(status);
 
     MObject meshobj;//获得网格物体
-    //for (iterGetMesh.reset();iterGetMesh.isDone();iterGetMesh.next())
+    //for (iterGetMesh.reset();!iterGetMesh.isDone();iterGetMesh.next())
     //{
     //    meshobj = iterGetMesh.currentItem(&status);
     //    CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -126,6 +141,133 @@ MStatus DoodleWeight::doIt(const MArgList& arg)
     displayInfo("是否结束 ==" + MString( ) + iterMeshVertex.isDone( ));
     return status;
 }
+
+MStatus DoodleWeight::createAimCurve(MPlug& plug, MFnIkJoint& jointNode)
+{
+    MDagModifier dagModifier;
+    MFnDependencyNode commNode;
+    MStatus status;
+    //获得解算节点
+    CHECK_MSTATUS_AND_RETURN_IT(commNode.setObject(commNodeObj));
+    int statr = commNode.findPlug("startFrame", &status).asInt( );
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    int end = commNode.findPlug("endFrame", &status).asInt( );
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    //创建动画节点
+    //MObject aimNodeObj
+    //CHECK_MSTATUS_AND_RETURN_IT(status);
+    MFnAnimCurve aim;
+    MTimeArray timeArray;
+    MDoubleArray TX;
+    MDoubleArray TY;
+    MDoubleArray TZ;
+    MDoubleArray RX;
+    MDoubleArray RY;
+    MDoubleArray RZ;
+    MDoubleArray SX;
+    MDoubleArray SY;
+    MDoubleArray SZ;
+
+    for (int i = 0; i < (end - statr); i++)
+    {
+        CHECK_MSTATUS_AND_RETURN_IT(timeArray.append(MTime((i + statr), MTime::uiUnit( ))));
+        MDataHandle HandleMatrix;
+        //MMatrix jointNodeFn;
+        CHECK_MSTATUS_AND_RETURN_IT(
+            plug.elementByLogicalIndex(i).getValue(HandleMatrix));
+
+        MTransformationMatrix matrix(HandleMatrix.asMatrix( ));
+        MVector tVector = matrix.getTranslation(MSpace::kWorld, &status);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        double size[3];
+        CHECK_MSTATUS_AND_RETURN_IT(matrix.getScale(size, MSpace::kWorld));
+        MQuaternion rQuater = matrix.rotation();
+        
+        CHECK_MSTATUS_AND_RETURN_IT(TX.append(tVector.x));
+        CHECK_MSTATUS_AND_RETURN_IT(TY.append(tVector.y));
+        CHECK_MSTATUS_AND_RETURN_IT(TZ.append(tVector.z));
+        
+        CHECK_MSTATUS_AND_RETURN_IT(RX.append(rQuater.asEulerRotation( ).asVector( ).x));
+        CHECK_MSTATUS_AND_RETURN_IT(RY.append(rQuater.asEulerRotation( ).asVector( ).y));
+        CHECK_MSTATUS_AND_RETURN_IT(RZ.append(rQuater.asEulerRotation( ).asVector( ).z));
+        
+        CHECK_MSTATUS_AND_RETURN_IT(SX.append(size[0]));
+        CHECK_MSTATUS_AND_RETURN_IT(SY.append(size[1]));
+        CHECK_MSTATUS_AND_RETURN_IT(SZ.append(size[2]));
+    }
+    MObject aimTx = aim.create(jointNode.findPlug("tx"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &TX));
+    
+    MObject aimTy = aim.create(jointNode.findPlug("ty"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &TY));
+    
+    MObject aimTz = aim.create(jointNode.findPlug("tz"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &TZ));
+    
+    MObject aimRx = aim.create(jointNode.findPlug("rx"), MFnAnimCurve::kAnimCurveTA, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &RX));
+    
+    MObject aimRy = aim.create(jointNode.findPlug("ry"), MFnAnimCurve::kAnimCurveTA, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &RY));
+    
+    MObject aimRz = aim.create(jointNode.findPlug("rz"), MFnAnimCurve::kAnimCurveTA, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &RZ));
+    
+    MObject aimSx = aim.create(jointNode.findPlug("sx"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &SX));
+    
+    MObject aimSy = aim.create(jointNode.findPlug("sy"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &SY));
+    
+    MObject aimSz = aim.create(jointNode.findPlug("sz"), MFnAnimCurve::kAnimCurveTL, &dagModifier);
+    CHECK_MSTATUS_AND_RETURN_IT(aim.addKeys(&MTimeArray(timeArray), &SZ));
+
+    dagModifier.renameNode(aimTx, jointNode.name( ) + "_tx");
+    dagModifier.renameNode(aimTy, jointNode.name( ) + "_ty");
+    dagModifier.renameNode(aimTz, jointNode.name( ) + "_tz");
+    dagModifier.renameNode(aimRx, jointNode.name( ) + "_rx");
+    dagModifier.renameNode(aimRy, jointNode.name( ) + "_ry");
+    dagModifier.renameNode(aimRz, jointNode.name( ) + "_rz");
+    dagModifier.renameNode(aimSx, jointNode.name( ) + "_sx");
+    dagModifier.renameNode(aimSy, jointNode.name( ) + "_sy");
+    dagModifier.renameNode(aimSz, jointNode.name( ) + "_sz");
+    dagModifier.doIt( );
+    return MS::kSuccess;
+}
+
+MStatus DoodleWeight::connectAimCurve()
+{
+    MFnDependencyNode commNode;
+    MFnSkinCluster skinNode;
+    MStatus status;
+
+    CHECK_MSTATUS_AND_RETURN_IT(commNode.setObject(commNodeObj));
+    CHECK_MSTATUS_AND_RETURN_IT(skinNode.setObject(skinNodeObj));
+    MItDependencyGraph iterGetMesh(skinNodeObj,
+                                   MFn::kJoint,
+                                   MItDependencyGraph::kUpstream,
+                                   MItDependencyGraph::kDepthFirst,
+                                   MItDependencyGraph::kNodeLevel,
+                                   &status);
+    CHECK_MSTATUS_AND_RETURN_IT(status);
+    MPlug plugWeightList = commNode.findPlug("localAnimList", &status);//获得动画数据
+    MObject JointObj;
+    int index = 0;
+    for (iterGetMesh.reset( ); !iterGetMesh.isDone( ); iterGetMesh.next( ))
+    {
+
+        JointObj = iterGetMesh.currentItem(&status);
+        CHECK_MSTATUS_AND_RETURN_IT(status);
+        MFnIkJoint jointNodeFn(JointObj);
+        createAimCurve(plugWeightList.elementByLogicalIndex(index).child(0), jointNodeFn);
+
+        index++;
+    }
+    return status;
+}
+
+
+
 
 bool DoodleWeight::isUndoable( ) const
 {

@@ -20,7 +20,18 @@ public:
 
 	//获得传入参数
 	MStatus getsyntaxFlag(const MArgList& arg);
+
+	//设置曲线和节点
+	//MStatus create
+private:
+	MStatus copyWeight();
+	MStatus createAimCurve(MPlug& plug,MFnIkJoint& jointNode);
+	MStatus connectAimCurve( );
+
 private:
 	MString commNodeString;
 	MString skinNodeString;
+
+	MObject skinNodeObj;
+	MObject commNodeObj;
 };
